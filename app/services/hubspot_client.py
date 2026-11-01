@@ -155,6 +155,7 @@ class HubSpotClient:
         now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         prefix = Config.DB_TABLE_PREFIX
         synced_count = 0
+        valid_hs_ids = set()
 
         with get_db() as db:
             for c in all_companies:
@@ -163,6 +164,7 @@ class HubSpotClient:
                 name = (props.get("name") or "").strip()
                 if not name:
                     continue
+                valid_hs_ids.add(hubspot_id)
 
                 domain = (props.get("domain") or "").strip()
                 website = (props.get("website") or "").strip()
@@ -268,6 +270,16 @@ class HubSpotClient:
                     ))
 
                 synced_count += 1
+
+            # Opschonen van bedrijven die in HubSpot zijn verwijderd/gearchiveerd
+            if valid_hs_ids:
+                cached_records = db.fetchall(f"SELECT hubspot_id, name FROM {prefix}hubspot_cache")
+                deleted_ids = [str(r["hubspot_id"]) for r in cached_records if str(r["hubspot_id"]) not in valid_hs_ids]
+                if deleted_ids:
+                    logger.info(f"🗑️ Verwijderen van {len(deleted_ids)} in HubSpot verwijderde bedrijven uit cache: {deleted_ids}")
+                    for d_id in deleted_ids:
+                        db.execute(f"DELETE FROM {prefix}hubspot_cache WHERE hubspot_id = %s", (d_id,))
+                        db.execute(f"DELETE FROM {prefix}matches WHERE hubspot_id = %s", (d_id,))
 
             db.execute(f"""
                 INSERT INTO {prefix}sync_log (sync_type, status, records_count, message, created_at)

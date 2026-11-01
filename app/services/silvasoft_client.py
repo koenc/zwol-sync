@@ -92,6 +92,7 @@ class SilvasoftClient:
         now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         prefix = Config.DB_TABLE_PREFIX
         synced_count = 0
+        valid_cust_nos = set()
 
         with get_db() as db:
             for r in all_relations:
@@ -106,6 +107,8 @@ class SilvasoftClient:
                 name = (r.get("Name") or "").strip()
                 if not name:
                     continue
+
+                valid_cust_nos.add(customer_number)
 
                 relation_guid = str(r.get("RelationGUID") or "")
                 kvk_number = str(r.get("RegistrationNumber") or "").strip()
@@ -206,6 +209,16 @@ class SilvasoftClient:
                     ))
 
                 synced_count += 1
+
+            # Opschonen van relaties die in Silvasoft zijn verwijderd
+            if valid_cust_nos:
+                cached_records = db.fetchall(f"SELECT customer_number, name FROM {prefix}silvasoft_cache")
+                deleted_nos = [str(r["customer_number"]) for r in cached_records if str(r["customer_number"]) not in valid_cust_nos]
+                if deleted_nos:
+                    logger.info(f"🗑️ Verwijderen van {len(deleted_nos)} in Silvasoft verwijderde relaties uit cache...")
+                    for d_no in deleted_nos:
+                        db.execute(f"DELETE FROM {prefix}silvasoft_cache WHERE customer_number = %s", (d_no,))
+                        db.execute(f"DELETE FROM {prefix}matches WHERE silvasoft_customer_number = %s", (d_no,))
 
             # Log sync
             db.execute(f"""
