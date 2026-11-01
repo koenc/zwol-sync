@@ -61,3 +61,7 @@ def load_env():
         except Exception as e:
             print(f"Waarschuwing: Kon .env niet inlezen ({e})")
 
+
+load_env()
+
+
