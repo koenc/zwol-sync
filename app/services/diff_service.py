@@ -400,7 +400,9 @@ class DiffService:
                         "contact_phone": hc.get("phone"),
                         "silvasoft": "Niet aanwezig in Silvasoft",
                         "hubspot": hc.get("name"),
-                        "hs_contact_id": cid
+                        "hs_contact_id": cid,
+                        "ss_has_contact": len(clean_ss) > 0,
+                        "ss_primary_name": clean_ss[0].get("name") if clean_ss else ""
                     })
 
         return diffs, identical_contacts, ignored_contacts

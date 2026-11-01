@@ -217,10 +217,20 @@ class QueueService:
 
                     with get_db() as db:
                         ss = db.fetchone(
-                            f"SELECT relation_guid FROM {prefix}silvasoft_cache WHERE customer_number = %s",
+                            f"SELECT relation_guid, contacts_json FROM {prefix}silvasoft_cache WHERE customer_number = %s",
                             (str(entity_id),)
                         )
-                    rel_guid = ss.get("relation_guid") if ss else None
+                    if not ss:
+                        raise ValueError(f"Silvasoft relatie #{entity_id} niet gevonden.")
+
+                    existing_cts = json.loads(ss.get("contacts_json") or "[]")
+                    if existing_cts and len(existing_cts) > 0:
+                        raise ValueError(
+                            f"Silvasoft relatie #{entity_id} heeft al een primaire contactpersoon ('{existing_cts[0].get('name')}'). "
+                            "Silvasoft staat via de REST API geen extra contactpersonen toe per relatie om overschrijving te voorkomen."
+                        )
+
+                    rel_guid = ss.get("relation_guid")
 
                     ss_payload = {
                         "RelationGUID": int(rel_guid) if rel_guid else None,

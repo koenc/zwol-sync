@@ -191,6 +191,8 @@
                 {% if cd.contact_email or cd.contact_phone %}
                   <br><small class="text-muted">{{ cd.contact_email or 'geen e-mail' }} • {{ cd.contact_phone or 'geen tel' }}</small>
                 {% endif %}
+              {% elif cd.type == 'CONTACT_NAME_DIFF' or cd.type == 'CONTACT_EMAIL_DIFF' %}
+                <strong>{{ cd.silvasoft }}</strong>
               {% else %}
                 <span class="badge badge-secondary">Niet aanwezig in Silvasoft</span>
               {% endif %}
@@ -204,11 +206,17 @@
                 </button>
               {% elif cd.type == 'CONTACT_ONLY_IN_HUBSPOT' %}
                 <div style="display: flex; gap: 4px; justify-content: center; align-items: center;">
-                  <button class="btn btn-xs btn-outline-primary"
-                    onclick="addContactToSilvasoft('{{ c.customer_number }}', '{{ cd.contact_name|escape }}', '{{ cd.contact_email|escape }}', '{{ cd.contact_phone|escape }}')"
-                    title="Voeg '{{ cd.contact_name }}' toe aan Silvasoft (via wachtrij)">
-                    ⬅ Naar Silvasoft
-                  </button>
+                  {% if cd.ss_has_contact %}
+                    <span class="badge badge-light text-muted" style="font-size:11px;" title="Silvasoft ondersteunt slechts 1 contactpersoon (al bezet door {{ cd.ss_primary_name }}). Klik op Negeren.">
+                      Max 1 in SS
+                    </span>
+                  {% else %}
+                    <button class="btn btn-xs btn-outline-primary"
+                      onclick="addContactToSilvasoft('{{ c.customer_number }}', '{{ cd.contact_name|escape }}', '{{ cd.contact_email|escape }}', '{{ cd.contact_phone|escape }}')"
+                      title="Voeg '{{ cd.contact_name }}' toe aan Silvasoft (via wachtrij)">
+                      ⬅ Naar Silvasoft
+                    </button>
+                  {% endif %}
                   <button class="btn btn-xs btn-text text-muted"
                     onclick="ignoreContact('{{ c.customer_number }}', '{{ c.hubspot_id }}', '{{ cd.hs_contact_id }}', '{{ cd.contact_name|escape }}', '{{ cd.contact_email|escape }}')"
                     title="Negeer '{{ cd.contact_name }}' (wordt uitgesloten van verschillen)">
@@ -237,6 +245,8 @@
                 {% if cd.contact_email or cd.contact_phone %}
                   <br><small class="text-muted">{{ cd.contact_email or 'geen e-mail' }} • {{ cd.contact_phone or 'geen tel' }}</small>
                 {% endif %}
+              {% elif cd.type == 'CONTACT_NAME_DIFF' or cd.type == 'CONTACT_EMAIL_DIFF' %}
+                <strong>{{ cd.hubspot }}</strong>
               {% else %}
                 <span class="badge badge-secondary">Niet aanwezig in HubSpot</span>
               {% endif %}
