@@ -78,6 +78,7 @@ class DiffService:
 
             # Case 2: Gekoppeld aan HubSpot bedrijf -> Verschillen berekenen
             diffs = []
+            identical_fields = []
 
             # 1. Bedrijfsnaam
             ss_name = clean_str(ss.get("name"))
@@ -89,12 +90,26 @@ class DiffService:
                     "silvasoft": ss_name,
                     "hubspot": hs_name
                 })
+            else:
+                identical_fields.append({
+                    "field": "name",
+                    "label": "Bedrijfsnaam",
+                    "silvasoft": ss_name,
+                    "hubspot": hs_name
+                })
 
             # 2. KvK
             ss_kvk = clean_str(ss.get("kvk_number"))
             hs_kvk = clean_str(hs.get("kvk_number"))
             if ss_kvk != hs_kvk and (ss_kvk or hs_kvk):
                 diffs.append({
+                    "field": "kvk_number",
+                    "label": "KvK-nummer",
+                    "silvasoft": ss_kvk or "(leeg)",
+                    "hubspot": hs_kvk or "(leeg)"
+                })
+            else:
+                identical_fields.append({
                     "field": "kvk_number",
                     "label": "KvK-nummer",
                     "silvasoft": ss_kvk or "(leeg)",
@@ -116,12 +131,26 @@ class DiffService:
                     "silvasoft": ss_street or "(leeg)",
                     "hubspot": hs_street or "(leeg)"
                 })
+            else:
+                identical_fields.append({
+                    "field": "street",
+                    "label": "Straat & Huisnummer",
+                    "silvasoft": ss_street or "(leeg)",
+                    "hubspot": hs_street or "(leeg)"
+                })
 
             # 4. Postcode
             ss_zip = clean_zip(ss.get("postal_code"))
             hs_zip = clean_zip(hs.get("postal_code"))
             if ss_zip != hs_zip and (ss_zip or hs_zip):
                 diffs.append({
+                    "field": "postal_code",
+                    "label": "Postcode",
+                    "silvasoft": ss.get("postal_code") or "(leeg)",
+                    "hubspot": hs.get("postal_code") or "(leeg)"
+                })
+            else:
+                identical_fields.append({
                     "field": "postal_code",
                     "label": "Postcode",
                     "silvasoft": ss.get("postal_code") or "(leeg)",
@@ -138,12 +167,26 @@ class DiffService:
                     "silvasoft": ss_city or "(leeg)",
                     "hubspot": hs_city or "(leeg)"
                 })
+            else:
+                identical_fields.append({
+                    "field": "city",
+                    "label": "Plaats",
+                    "silvasoft": ss_city or "(leeg)",
+                    "hubspot": hs_city or "(leeg)"
+                })
 
             # 6. Telefoon
             ss_ph = clean_phone(ss.get("phone"))
             hs_ph = clean_phone(hs.get("phone"))
             if ss_ph != hs_ph and (ss_ph or hs_ph):
                 diffs.append({
+                    "field": "phone",
+                    "label": "Telefoonnummer",
+                    "silvasoft": ss.get("phone") or "(leeg)",
+                    "hubspot": hs.get("phone") or "(leeg)"
+                })
+            else:
+                identical_fields.append({
                     "field": "phone",
                     "label": "Telefoonnummer",
                     "silvasoft": ss.get("phone") or "(leeg)",
@@ -160,11 +203,18 @@ class DiffService:
                     "silvasoft": ss.get("website") or "(leeg)",
                     "hubspot": hs.get("website") or hs.get("domain") or "(leeg)"
                 })
+            else:
+                identical_fields.append({
+                    "field": "website",
+                    "label": "Website",
+                    "silvasoft": ss.get("website") or "(leeg)",
+                    "hubspot": hs.get("website") or hs.get("domain") or "(leeg)"
+                })
 
             # Contactpersonen vergelijken
             ss_contacts = json.loads(ss.get("contacts_json") or "[]")
             hs_contacts = json.loads(hs.get("contacts_json") or "[]")
-            contacts_diff = self._compare_contacts(ss_contacts, hs_contacts)
+            contacts_diff, identical_contacts = self._compare_contacts(ss_contacts, hs_contacts)
 
             is_in_sync = (len(diffs) == 0 and len(contacts_diff) == 0)
 
@@ -190,7 +240,10 @@ class DiffService:
                     "silvasoft": ss,
                     "hubspot": hs,
                     "diffs": diffs,
-                    "contacts_diff": contacts_diff
+                    "contacts_diff": contacts_diff,
+                    "identical_fields": identical_fields,
+                    "identical_contacts": identical_contacts,
+                    "identical_count": len(identical_fields) + len(identical_contacts)
                 })
 
         return {
@@ -198,9 +251,10 @@ class DiffService:
             "companies": companies_list
         }
 
-    def _compare_contacts(self, ss_contacts: List[Dict], hs_contacts: List[Dict]) -> List[Dict]:
+    def _compare_contacts(self, ss_contacts: List[Dict], hs_contacts: List[Dict]):
         """Vergelijkt contactpersonen op e-mail en naam, met deduplicatie."""
         diffs = []
+        identical_contacts = []
 
         # 1. Schoon Silvasoft contacten op (geen facturatie-afdelingen en ontdubbelen)
         clean_ss = []
@@ -257,6 +311,17 @@ class DiffService:
                         "hs_contact_id": str(match_hc.get("id")),
                         "ss_contact_guid": str(sc.get("guid") or "")
                     })
+                else:
+                    c_name = sc.get("name") or match_hc.get("name")
+                    c_mail = sc.get("email") or match_hc.get("email")
+                    c_ph = sc.get("phone") or match_hc.get("phone")
+                    identical_contacts.append({
+                        "contact_name": c_name,
+                        "contact_email": c_mail,
+                        "contact_phone": c_ph,
+                        "silvasoft": f"{c_name} ({c_mail or 'geen mail'} • {c_ph or 'geen tel'})",
+                        "hubspot": f"{c_name} ({c_mail or 'geen mail'} • {c_ph or 'geen tel'})"
+                    })
             else:
                 # Staat alleen in Silvasoft
                 diffs.append({
@@ -282,7 +347,7 @@ class DiffService:
                     "hs_contact_id": cid
                 })
 
-        return diffs
+        return diffs, identical_contacts
 
 
 diff_service = DiffService()

@@ -114,6 +114,38 @@ async function createInHubspot(custNo, name) {
   }
 }
 
+async function syncContactPhone(target, entityId, newVal, oldVal) {
+  if (target === 'HUBSPOT') {
+    if (!confirm(`Wil je het telefoonnummer in HubSpot bijwerken naar '${newVal || '(leeg)'}'?`)) return;
+    try {
+      const res = await fetch('/api/queue/apply-field', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'HUBSPOT',
+          action: 'UPDATE_CONTACT_PHONE',
+          entity_id: entityId,
+          field_name: 'phone',
+          new_value: newVal,
+          old_value: oldVal
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(`Fout: ${data.error}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Fout: ${err.message}`, 'error');
+    }
+  } else {
+    showToast('Contactpersoon telefoonnummers naar Silvasoft kunnen in Silvasoft worden aangepast.', 'info');
+  }
+}
+
+
 // --------------------------------------------------------------------------
 // CONTACTPERSOON NAAR HUBSPOT PUSHEN
 // --------------------------------------------------------------------------
@@ -149,6 +181,38 @@ async function addContactToHubspot(companyId, name, email, phone) {
     showToast(`Fout: ${err.message}`, 'error');
   }
 }
+
+async function syncContactPhone(target, entityId, newVal, oldVal) {
+  if (target === 'HUBSPOT') {
+    if (!confirm(`Wil je het telefoonnummer in HubSpot bijwerken naar '${newVal || '(leeg)'}'?`)) return;
+    try {
+      const res = await fetch('/api/queue/apply-field', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'HUBSPOT',
+          action: 'UPDATE_CONTACT_PHONE',
+          entity_id: entityId,
+          field_name: 'phone',
+          new_value: newVal,
+          old_value: oldVal
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(`Fout: ${data.error}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Fout: ${err.message}`, 'error');
+    }
+  } else {
+    showToast('Contactpersoon telefoonnummers naar Silvasoft kunnen in Silvasoft worden aangepast.', 'info');
+  }
+}
+
 
 // --------------------------------------------------------------------------
 
@@ -261,6 +325,38 @@ async function confirmManualMatch(ssNo, hsId, hsName) {
   }
 }
 
+async function syncContactPhone(target, entityId, newVal, oldVal) {
+  if (target === 'HUBSPOT') {
+    if (!confirm(`Wil je het telefoonnummer in HubSpot bijwerken naar '${newVal || '(leeg)'}'?`)) return;
+    try {
+      const res = await fetch('/api/queue/apply-field', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'HUBSPOT',
+          action: 'UPDATE_CONTACT_PHONE',
+          entity_id: entityId,
+          field_name: 'phone',
+          new_value: newVal,
+          old_value: oldVal
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(`Fout: ${data.error}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Fout: ${err.message}`, 'error');
+    }
+  } else {
+    showToast('Contactpersoon telefoonnummers naar Silvasoft kunnen in Silvasoft worden aangepast.', 'info');
+  }
+}
+
+
 async function unmatch(ssNo) {
   if (!confirm(`Koppeling voor klant #${ssNo} verbreken?`)) return;
 
@@ -281,6 +377,38 @@ async function unmatch(ssNo) {
     showToast(`Fout: ${err.message}`, 'error');
   }
 }
+
+async function syncContactPhone(target, entityId, newVal, oldVal) {
+  if (target === 'HUBSPOT') {
+    if (!confirm(`Wil je het telefoonnummer in HubSpot bijwerken naar '${newVal || '(leeg)'}'?`)) return;
+    try {
+      const res = await fetch('/api/queue/apply-field', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'HUBSPOT',
+          action: 'UPDATE_CONTACT_PHONE',
+          entity_id: entityId,
+          field_name: 'phone',
+          new_value: newVal,
+          old_value: oldVal
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(`Fout: ${data.error}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Fout: ${err.message}`, 'error');
+    }
+  } else {
+    showToast('Contactpersoon telefoonnummers naar Silvasoft kunnen in Silvasoft worden aangepast.', 'info');
+  }
+}
+
 
 // --------------------------------------------------------------------------
 // CLIENT-SIDE FILTERING & SEARCH
@@ -343,3 +471,27 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
+
+
+function toggleAllFields(custNo) {
+  const rows = document.querySelectorAll('.row-identical-' + custNo);
+  const btn = document.getElementById('btn-toggle-fields-' + custNo);
+  if (!rows || rows.length === 0) return;
+
+  const isHidden = (rows[0].style.display === 'none');
+  rows.forEach(r => {
+    r.style.display = isHidden ? 'table-row' : 'none';
+  });
+
+  if (btn) {
+    if (isHidden) {
+      btn.innerHTML = '👁️ Verberg gelijke velden';
+      btn.classList.add('btn-primary');
+      btn.classList.remove('btn-outline');
+    } else {
+      btn.innerHTML = '👁️ Toon alle velden (' + rows.length + ' gelijk)';
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-outline');
+    }
+  }
+}

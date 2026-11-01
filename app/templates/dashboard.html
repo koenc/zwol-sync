@@ -91,7 +91,15 @@
           onclick="openManualMatch('{{ c.customer_number }}', '{{ c.name|escape }}')">
           🔗 Handmatig Koppelen
         </button>
-        {% elif c.status == 'DIFF_FOUND' %}
+        {% elif c.status == 'DIFF_FOUND' or c.status == 'IN_SYNC' %}
+        {% if c.identical_count > 0 %}
+        <button class="btn btn-outline btn-sm" id="btn-toggle-fields-{{ c.customer_number }}"
+          onclick="toggleAllFields('{{ c.customer_number }}')"
+          title="Toon of verberg alle {{ c.identical_count }} velden die al identiek zijn">
+          👁️ Toon alle velden ({{ c.identical_count }} gelijk)
+        </button>
+        {% endif %}
+        {% if c.status == 'DIFF_FOUND' %}
         <button class="btn btn-outline-primary btn-sm"
           onclick="bulkSync('{{ c.customer_number }}', '{{ c.hubspot_id }}', 'TO_HUBSPOT')"
           title="Kopieer alle afwijkende Silvasoft-waarden naar HubSpot">
@@ -102,6 +110,7 @@
           title="Kopieer alle afwijkende HubSpot-waarden naar Silvasoft (via wachtrij)">
           Alles ⬅ Silvasoft
         </button>
+        {% endif %}
         <button class="btn btn-text btn-sm text-muted" onclick="unmatch('{{ c.customer_number }}')"
           title="Koppeling met dit HubSpot-bedrijf verbreken">
           Ontkoppelen
@@ -199,6 +208,41 @@
               {% else %}
                 <span class="badge badge-secondary">Niet aanwezig in HubSpot</span>
               {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+
+          <!-- Gelijke Velden (standaard verborgen, uitklapbaar via knop) -->
+          {% for idf in c.identical_fields %}
+          <tr class="diff-row row-identical row-identical-{{ c.customer_number }}" style="display: none; background: #f8fafc; opacity: 0.9;">
+            <td class="diff-field-name" style="color: #64748b;">
+              <span style="color: #10b981; font-weight: bold; margin-right: 4px;">✅</span> {{ idf.label }}
+            </td>
+            <td class="diff-val-ss" style="color: #475569;">
+              {{ idf.silvasoft }}
+            </td>
+            <td class="diff-actions" style="text-align: center;">
+              <span class="badge badge-success" style="font-size: 11px; padding: 2px 6px;">Gelijk</span>
+            </td>
+            <td class="diff-val-hs" style="color: #475569;">
+              {{ idf.hubspot }}
+            </td>
+          </tr>
+          {% endfor %}
+
+          {% for idc in c.identical_contacts %}
+          <tr class="diff-row row-identical row-identical-{{ c.customer_number }}" style="display: none; background: #f8fafc; opacity: 0.9;">
+            <td class="diff-field-name" style="color: #64748b;">
+              <span style="color: #10b981; font-weight: bold; margin-right: 4px;">✅</span> 👤 Contact: {{ idc.contact_name }}
+            </td>
+            <td class="diff-val-ss" style="color: #475569;">
+              {{ idc.silvasoft }}
+            </td>
+            <td class="diff-actions" style="text-align: center;">
+              <span class="badge badge-success" style="font-size: 11px; padding: 2px 6px;">Gelijk</span>
+            </td>
+            <td class="diff-val-hs" style="color: #475569;">
+              {{ idc.hubspot }}
             </td>
           </tr>
           {% endfor %}

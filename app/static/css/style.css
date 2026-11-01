@@ -608,3 +608,20 @@ body {
   border: 1px solid var(--border-color);
 }
 
+
+
+.row-identical {
+  background: #f8fafc !important;
+  transition: all 0.2s ease-in-out;
+}
+
+.row-identical:hover {
+  background: #f1f5f9 !important;
+}
+
+.row-identical .diff-val-ss,
+.row-identical .diff-val-hs {
+  color: #334155 !important;
+  background: transparent !important;
+  font-weight: 500;
+}
