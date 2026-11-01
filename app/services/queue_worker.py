@@ -123,15 +123,60 @@ class QueueService:
 
             elif target == "SILVASOFT":
                 if action == "UPDATE_FIELD":
-                    # Update in Silvasoft
-                    ss_payload = {field: new_val}
-                    silvasoft_client.update_company(entity_id, ss_payload)
-                    # Werk ook lokale cache direct bij
+                    import re
+                    # Zoek relation_guid op in silvasoft_cache
                     with get_db() as db:
-                        db.execute(
-                            f"UPDATE {prefix}silvasoft_cache SET {field} = %s WHERE customer_number = %s",
-                            (new_val, entity_id)
+                        ss = db.fetchone(
+                            f"SELECT relation_guid FROM {prefix}silvasoft_cache WHERE customer_number = %s",
+                            (str(entity_id),)
                         )
+                    rel_guid = ss.get("relation_guid") if ss else None
+
+                    ss_payload = {}
+                    if rel_guid:
+                        try:
+                            ss_payload["RelationGUID"] = int(rel_guid)
+                        except (ValueError, TypeError):
+                            ss_payload["RelationGUID"] = rel_guid
+
+                    if field == "street":
+                        m = re.match(r'^(.*?)\s+(\d+)\s*(.*)$', (new_val or "").strip())
+                        if m:
+                            s_name, unit, app = m.group(1), m.group(2), m.group(3)
+                        else:
+                            s_name, unit, app = (new_val or "").strip(), "", ""
+
+                        ss_payload["Address_Street"] = s_name
+                        ss_payload["Address_Unit"] = unit
+                        ss_payload["Address_UnitAppendix"] = app
+
+                        silvasoft_client.update_company(str(entity_id), ss_payload)
+
+                        with get_db() as db:
+                            db.execute(
+                                f"UPDATE {prefix}silvasoft_cache SET street = %s, unit = %s, unit_appendix = %s WHERE customer_number = %s",
+                                (s_name, unit, app, str(entity_id))
+                            )
+                    else:
+                        ss_field_map = {
+                            "name": "Name",
+                            "postal_code": "Address_PostalCode",
+                            "city": "Address_City",
+                            "phone": "Phone",
+                            "website": "Website",
+                            "kvk_number": "RegistrationNumber",
+                            "email": "Email"
+                        }
+                        ss_key = ss_field_map.get(field, field)
+                        ss_payload[ss_key] = new_val
+
+                        silvasoft_client.update_company(str(entity_id), ss_payload)
+
+                        with get_db() as db:
+                            db.execute(
+                                f"UPDATE {prefix}silvasoft_cache SET {field} = %s WHERE customer_number = %s",
+                                (new_val, str(entity_id))
+                            )
 
             # Succes registreren
             with get_db() as db:

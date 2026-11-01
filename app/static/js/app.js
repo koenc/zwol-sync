@@ -73,7 +73,7 @@ async function bulkSync(custNo, hsId, direction) {
   const card = document.getElementById(`card-${custNo}`);
   if (!card) return;
 
-  const rows = card.querySelectorAll('.diff-row');
+  const rows = card.querySelectorAll('.diff-highlight');
   if (rows.length === 0) return;
 
   showToast('Bulk update wordt uitgevoerd...', 'info');

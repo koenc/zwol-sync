@@ -217,11 +217,16 @@ class SilvasoftClient:
         return synced_count
 
     def update_company(self, customer_number: str, payload: dict) -> dict:
-        """Voert een gerichte update uit op een relatie in Silvasoft."""
+        """Voert een gerichte update uit op een relatie in Silvasoft via PUT."""
         endpoint = "updaterelation/"
-        payload["CustomerNumber"] = int(customer_number) if customer_number.isdigit() else customer_number
+        if "CustomerNumber" not in payload and customer_number:
+            try:
+                payload["CustomerNumber"] = int(customer_number)
+            except (ValueError, TypeError):
+                payload["CustomerNumber"] = customer_number
         logger.info(f"Update verzenden naar Silvasoft voor klant {customer_number}: {payload}")
-        return self._request("POST", endpoint, json_data=payload)
+        return self._request("PUT", endpoint, json_data=payload)
+
 
 
 silvasoft_client = SilvasoftClient()
