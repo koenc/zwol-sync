@@ -21,6 +21,7 @@
 
       <nav class="nav-links">
         <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">📊 Overzicht & Diffs</a>
+        <a href="/newsletter" class="nav-item {% if request.path == '/newsletter' %}active{% endif %}">✉️ Nieuwsbrief</a>
         <a href="/queue" class="nav-item {% if request.path == '/queue' %}active{% endif %}">
           ⏳ Wachtrij
           <span id="nav-queue-badge" class="badge badge-pill badge-primary" style="display:none;">0</span>

@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+
+{% block title %}Nieuwsbrief Inschrijvingen - ZWOL Sync{% endblock %}
+
+{% block content %}
+<div class="content-header">
+  <div>
+    <h2>✉️ Nieuwsbrief Inschrijvingen</h2>
+    <p class="subtitle">
+      Overzicht van alle contactpersonen bij HubSpot-bedrijven en hun inschrijving voor de algemene ZWOL Nieuwsbrief.
+      Automatische segmentatielijsten (zoals Retail & Horeca) werken in HubSpot op basis van het Bedrijfstype.
+    </p>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-secondary btn-sm" onclick="triggerSync('hubspot')">
+      <span>🔄 HubSpot Cache Verversen</span>
+    </button>
+  </div>
+</div>
+
+<!-- Statistieken Grid -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon">👥</div>
+    <div class="stat-content">
+      <span class="stat-value" id="stat-total">{{ stats.total_contacts }}</span>
+      <span class="stat-label">Totaal Contacten ({{ stats.total_companies }} bedrijven)</span>
+    </div>
+  </div>
+
+  <div class="stat-card" style="border-left: 4px solid var(--color-success);">
+    <div class="stat-icon">✅</div>
+    <div class="stat-content">
+      <span class="stat-value" id="stat-subscribed" style="color: var(--color-success);">{{ stats.subscribed }}</span>
+      <span class="stat-label">Ingeschreven voor Nieuwsbrief</span>
+    </div>
+  </div>
+
+  <div class="stat-card" style="border-left: 4px solid var(--color-warning);">
+    <div class="stat-icon">➖</div>
+    <div class="stat-content">
+      <span class="stat-value" id="stat-never" style="color: var(--color-warning);">{{ stats.never_subscribed }}</span>
+      <span class="stat-label">Nooit Ingeschreven</span>
+    </div>
+  </div>
+
+  <div class="stat-card" style="border-left: 4px solid var(--color-danger);">
+    <div class="stat-icon">⛔</div>
+    <div class="stat-content">
+      <span class="stat-value" id="stat-unsubscribed" style="color: var(--color-danger);">{{ stats.unsubscribed }}</span>
+      <span class="stat-label">Zelf Uitgeschreven (AVG)</span>
+    </div>
+  </div>
+
+  <div class="stat-card" style="border-left: 4px solid #64748b;">
+    <div class="stat-icon">⚠️</div>
+    <div class="stat-content">
+      <span class="stat-value" id="stat-without-type" style="color: #64748b;">{{ stats.without_type }}</span>
+      <span class="stat-label">Bedrijven Zonder Type</span>
+    </div>
+  </div>
+</div>
+
+<!-- Filter en Actie Toolbar -->
+<div class="filter-bar">
+  <div class="filter-group">
+    <button class="filter-pill active" data-filter="all" onclick="setFilter('all', this)">
+      Alle <span class="badge badge-pill badge-primary" id="tab-count-all">{{ stats.total_contacts }}</span>
+    </button>
+    <button class="filter-pill" data-filter="never" onclick="setFilter('never', this)">
+      ➖ Nooit Ingeschreven <span class="badge badge-pill badge-warning" id="tab-count-never">{{ stats.never_subscribed }}</span>
+    </button>
+    <button class="filter-pill" data-filter="subscribed" onclick="setFilter('subscribed', this)">
+      ✅ Ingeschreven <span class="badge badge-pill badge-success" id="tab-count-subscribed">{{ stats.subscribed }}</span>
+    </button>
+    <button class="filter-pill" data-filter="unsubscribed" onclick="setFilter('unsubscribed', this)">
+      ⛔ Zelf Uitgeschreven <span class="badge badge-pill badge-danger" id="tab-count-unsubscribed">{{ stats.unsubscribed }}</span>
+    </button>
+    <button class="filter-pill" data-filter="no-type" onclick="setFilter('no-type', this)">
+      ⚠️ Zonder Type
+    </button>
+  </div>
+
+  <div class="filter-group">
+    <!-- Type Filter Dropdown -->
+    <select id="typeFilter" class="type-select" onchange="applyFilters()">
+      <option value="">Alle Bedrijfstypen</option>
+      <option value="__NONE__">⚠️ Alleen Zonder Type</option>
+      {% for t in company_types %}
+        <option value="{{ t }}">{{ t }}</option>
+      {% endfor %}
+    </select>
+
+    <!-- Zoekbalk -->
+    <input type="text" id="contactSearch" class="table-search-input" placeholder="🔍 Zoek bedrijf, contact of e-mail..." oninput="applyFilters()">
+
+    <!-- Bulk Actie Knop -->
+    <button id="btnBulkSubscribe" class="btn btn-primary btn-sm" onclick="openBulkSubscribeModal()" title="Schrijf in aanmerking komende contactpersonen in">
+      <span>✉️ Schrijf niet-ingeschrevenen in (<span id="bulkCount">{{ stats.never_subscribed }}</span>)</span>
+    </button>
+  </div>
+</div>
+
+<!-- Contactpersonen Tabel -->
+<div class="table-responsive">
+  <table class="newsletter-table" id="newsletterTable">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Bedrijf</th>
+        <th style="width: 18%;">Bedrijfstype</th>
+        <th style="width: 27%;">Contactpersoon</th>
+        <th style="width: 15%;">Nieuwsbrief Status</th>
+        <th style="width: 15%; text-align: right;">Actie</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in contacts %}
+      <tr class="contact-row"
+          data-status="{{ c.newsletter_status }}"
+          data-has-type="{{ '1' if c.has_type else '0' }}"
+          data-type="{{ c.company_type_label }}"
+          data-search="{{ c.company_name | lower }} {{ c.name | lower }} {{ c.email | lower }} {{ c.company_type_label | lower }}"
+          id="row-{{ c.contact_id }}">
+        
+        <!-- Kolom 1: Bedrijf -->
+        <td>
+          <div>
+            <a href="https://app-eu1.hubspot.com/contacts/{{ hubspot_portal_id }}/company/{{ c.company_id }}"
+               target="_blank"
+               class="external-link font-semibold">
+              {{ c.company_name }} ↗
+            </a>
+          </div>
+        </td>
+
+        <!-- Kolom 2: Bedrijfstype -->
+        <td>
+          {% if c.has_type %}
+            <span class="badge-outline">{{ c.company_type_label }}</span>
+          {% else %}
+            <span class="badge-warning-soft text-xs" title="Geen bedrijfstype ingesteld in HubSpot. Dit bedrijf wordt niet meegenomen in automatische retail- of horecalijsten!">
+              ⚠️ Geen type
+            </span>
+          {% endif %}
+        </td>
+
+        <!-- Kolom 3: Contactpersoon -->
+        <td>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            {% if c.contact_id %}
+              <a href="https://app-eu1.hubspot.com/contacts/{{ hubspot_portal_id }}/contact/{{ c.contact_id }}"
+                 target="_blank"
+                 class="external-link">
+                {{ c.name }} ↗
+              </a>
+            {% else %}
+              <span class="font-medium">{{ c.name }}</span>
+            {% endif %}
+
+            {% if c.is_primary %}
+              <span title="Primair contactpersoon" style="font-size: 0.85rem;">👑</span>
+            {% endif %}
+          </div>
+          {% if c.email %}
+            <div class="contact-meta">
+              <span>✉️ {{ c.email }}</span>
+              {% if c.phone %}
+                <span style="margin-left: 8px;">📞 {{ c.phone }}</span>
+              {% endif %}
+            </div>
+          {% else %}
+            <div class="contact-meta text-muted"><em>Geen e-mailadres bekend</em></div>
+          {% endif %}
+        </td>
+
+        <!-- Kolom 4: Nieuwsbrief Status -->
+        <td class="status-cell">
+          {% if c.newsletter_status == 'SUBSCRIBED' %}
+            <span class="badge-success-soft">✅ Ingeschreven</span>
+          {% elif c.newsletter_status == 'UNSUBSCRIBED' %}
+            <span class="badge-danger-soft" title="Contact heeft zich zelf afgemeld. Herinschrijving is conform AVG strikt geblokkeerd.">
+              ⛔ Zelf uitgeschreven
+            </span>
+          {% else %}
+            <span class="badge-warning-soft">➖ Nooit ingeschreven</span>
+          {% endif %}
+        </td>
+
+        <!-- Kolom 5: Actie -->
+        <td class="action-cell" style="text-align: right;">
+          {% if c.newsletter_status == 'SUBSCRIBED' %}
+            <span class="text-success text-sm font-semibold">✓ Aangemeld</span>
+          {% elif c.newsletter_status == 'UNSUBSCRIBED' %}
+            <span class="text-muted text-sm" title="Contact heeft zich zelf afgemeld conform AVG.">Afgemeld (AVG)</span>
+          {% else %}
+            {% if c.email %}
+              <button class="btn btn-sm btn-primary btn-subscribe"
+                      onclick="subscribeSingle('{{ c.contact_id }}', '{{ c.email }}', '{{ c.name | escape }}', '{{ c.company_name | escape }}', this)">
+                + Inschrijven
+              </button>
+            {% else %}
+              <span class="text-muted text-sm">Geen e-mail</span>
+            {% endif %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+
+      <tr id="noResultsRow" style="display: none;">
+        <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-muted);">
+          Geen contactpersonen gevonden die aan de filters voldoen.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Modal voor Bulk Inschrijving Bevestiging -->
+<div id="bulkModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 style="font-size: 1.1rem; font-weight: 600;">✉️ Bulk Aanmelden voor Nieuwsbrief</h3>
+      <span class="modal-close" onclick="closeBulkModal()">&times;</span>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom: 12px; font-size: 0.92rem;">
+        Je staat op het punt om <strong id="modalBulkCount">0</strong> contactpersonen in te schrijven voor de algemene ZWOL Nieuwsbrief (123809007).
+      </p>
+
+      <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; margin-bottom: 16px; font-size: 0.85rem;">
+        <div><strong>Juridische grondslag:</strong> Gerechtvaardigd belang (Klantrelatie)</div>
+        <div style="margin-top: 4px; color: var(--text-muted);">
+          <strong>AVG / Privacy:</strong> Contacten die zich zelf hebben afgemeld (opt-out) worden te allen tijde <em>strikt overgeslagen</em>.
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+        <button class="btn btn-secondary" onclick="closeBulkModal()">Annuleren</button>
+        <button id="btnConfirmBulk" class="btn btn-primary" onclick="executeBulkSubscribe()">
+          ✓ Ja, Schrijf In
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentFilter = 'all';
+
+function setFilter(filterType, element) {
+  currentFilter = filterType;
+  document.querySelectorAll('.filter-pill').forEach(btn => btn.classList.remove('active'));
+  if (element) element.classList.add('active');
+  applyFilters();
+}
+
+function applyFilters() {
+  const searchTerm = (document.getElementById('contactSearch').value || '').toLowerCase().trim();
+  const selectedType = document.getElementById('typeFilter').value;
+  const rows = document.querySelectorAll('.contact-row');
+
+  let visibleCount = 0;
+  let eligibleCount = 0;
+
+  rows.forEach(row => {
+    const status = row.getAttribute('data-status');
+    const hasType = row.getAttribute('data-has-type') === '1';
+    const typeLabel = row.getAttribute('data-type');
+    const searchData = row.getAttribute('data-search') || '';
+
+    let matchesFilter = true;
+    if (currentFilter === 'never' && status !== 'NOT_SPECIFIED') matchesFilter = false;
+    if (currentFilter === 'subscribed' && status !== 'SUBSCRIBED') matchesFilter = false;
+    if (currentFilter === 'unsubscribed' && status !== 'UNSUBSCRIBED') matchesFilter = false;
+    if (currentFilter === 'no-type' && hasType) matchesFilter = false;
+
+    let matchesType = true;
+    if (selectedType === '__NONE__') {
+      if (hasType) matchesType = false;
+    } else if (selectedType && typeLabel !== selectedType) {
+      matchesType = false;
+    }
+
+    let matchesSearch = true;
+    if (searchTerm && !searchData.includes(searchTerm)) {
+      matchesSearch = false;
+    }
+
+    if (matchesFilter && matchesType && matchesSearch) {
+      row.style.display = '';
+      visibleCount++;
+      if (status === 'NOT_SPECIFIED') {
+        eligibleCount++;
+      }
+    } else {
+      row.style.display = 'none';
+    }
+  });
+
+  document.getElementById('noResultsRow').style.display = visibleCount === 0 ? '' : 'none';
+  document.getElementById('bulkCount').textContent = eligibleCount;
+  
+  const bulkBtn = document.getElementById('btnBulkSubscribe');
+  if (eligibleCount === 0) {
+    bulkBtn.disabled = true;
+    bulkBtn.style.opacity = '0.6';
+  } else {
+    bulkBtn.disabled = false;
+    bulkBtn.style.opacity = '1';
+  }
+}
+
+async function subscribeSingle(contactId, email, name, company, btn) {
+  if (!email) return;
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span>⏳ Bezig...</span>';
+
+  try {
+    const res = await fetch('/api/newsletter/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contact_id: contactId,
+        email: email,
+        contact_name: name,
+        company_name: company
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast(data.message || 'Succesvol ingeschreven!', 'success');
+
+      // Update UI row
+      const row = btn.closest('.contact-row');
+      if (row) {
+        row.setAttribute('data-status', 'SUBSCRIBED');
+        const statusCell = row.querySelector('.status-cell');
+        if (statusCell) {
+          statusCell.innerHTML = '<span class="badge-success-soft">✅ Ingeschreven</span>';
+        }
+        const actionCell = row.querySelector('.action-cell');
+        if (actionCell) {
+          actionCell.innerHTML = '<span class="text-success text-sm font-semibold">✓ Aangemeld</span>';
+        }
+      }
+
+      // Update stats counters
+      updateCounter('stat-subscribed', 1);
+      updateCounter('stat-never', -1);
+      updateCounter('tab-count-subscribed', 1);
+      updateCounter('tab-count-never', -1);
+
+      applyFilters();
+    } else {
+      showToast(data.error || 'Inschrijven mislukt', 'error');
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  } catch (err) {
+    showToast('Fout bij verzenden verzoek: ' + err, 'error');
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
+
+function updateCounter(id, delta) {
+  const el = document.getElementById(id);
+  if (el) {
+    let val = parseInt(el.textContent, 10) || 0;
+    val = Math.max(0, val + delta);
+    el.textContent = val;
+  }
+}
+
+function openBulkSubscribeModal() {
+  const eligibleCount = parseInt(document.getElementById('bulkCount').textContent, 10) || 0;
+  if (eligibleCount === 0) {
+    showToast('Er zijn momenteel geen niet-ingeschreven contacten zichtbaar.', 'info');
+    return;
+  }
+  document.getElementById('modalBulkCount').textContent = eligibleCount;
+  document.getElementById('bulkModal').style.display = 'flex';
+}
+
+function closeBulkModal() {
+  document.getElementById('bulkModal').style.display = 'none';
+}
+
+async function executeBulkSubscribe() {
+  const confirmBtn = document.getElementById('btnConfirmBulk');
+  confirmBtn.disabled = true;
+  confirmBtn.innerHTML = '<span>⏳ Bezig met inschrijven...</span>';
+
+  // Verzamel alle momenteel zichtbare contactpersonen met NOT_SPECIFIED en een geldig e-mailadres
+  const rows = document.querySelectorAll('.contact-row');
+  const targetEmails = [];
+
+  rows.forEach(row => {
+    if (row.style.display !== 'none' && row.getAttribute('data-status') === 'NOT_SPECIFIED') {
+      const subBtn = row.querySelector('.btn-subscribe');
+      if (subBtn && subBtn.getAttribute('data-email')) {
+        targetEmails.push(subBtn.getAttribute('data-email'));
+      }
+    }
+  });
+
+  try {
+    const res = await fetch('/api/newsletter/bulk-subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emails: targetEmails })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast(data.message || 'Bulk inschrijving voltooid!', 'success');
+      closeBulkModal();
+
+      // Update rows
+      targetEmails.forEach(email => {
+        rows.forEach(row => {
+          const btn = row.querySelector(`.btn-subscribe[data-email="${email}"]`);
+          if (btn) {
+            row.setAttribute('data-status', 'SUBSCRIBED');
+            const statusCell = row.querySelector('.status-cell');
+            if (statusCell) {
+              statusCell.innerHTML = '<span class="badge-success-soft">✅ Ingeschreven</span>';
+            }
+            const actionCell = row.querySelector('.action-cell');
+            if (actionCell) {
+              actionCell.innerHTML = '<span class="text-success text-sm font-semibold">✓ Aangemeld</span>';
+            }
+          }
+        });
+      });
+
+      const count = data.subscribed_count || targetEmails.length;
+      updateCounter('stat-subscribed', count);
+      updateCounter('stat-never', -count);
+      updateCounter('tab-count-subscribed', count);
+      updateCounter('tab-count-never', -count);
+
+      applyFilters();
+    } else {
+      showToast(data.error || 'Bulk inschrijven mislukt', 'error');
+    }
+  } catch (err) {
+    showToast('Fout bij bulk verzoek: ' + err, 'error');
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.innerHTML = '✓ Ja, Schrijf In';
+  }
+}
+
+// Modal sluiten bij klikken op achtergrond
+window.addEventListener('click', function(e) {
+  const modal = document.getElementById('bulkModal');
+  if (e.target === modal) {
+    closeBulkModal();
+  }
+});
+
+// Initialiseer filters bij laden
+document.addEventListener('DOMContentLoaded', () => {
+  applyFilters();
+});
+</script>
+{% endblock %}

@@ -2,6 +2,7 @@ import time
 import json
 import logging
 import datetime
+import re
 import requests
 import urllib3
 from typing import Dict, List, Any, Optional
@@ -14,6 +15,7 @@ logger = logging.getLogger("zwol_sync")
 
 class HubSpotClient:
     BASE_URL = "https://api.hubapi.com"
+    NEWSLETTER_SUBSCRIPTION_ID = "123809007"
 
     COMPANY_PROPERTIES = [
         "name",
@@ -24,6 +26,7 @@ class HubSpotClient:
         "zip",
         "country",
         "phone",
+        "type",
         "kvk_nummer",
         "kvk",
         "silvasoft_customer_number",
@@ -39,7 +42,10 @@ class HubSpotClient:
         "phone",
         "mobilephone",
         "jobtitle",
-        "associatedcompanyid"
+        "associatedcompanyid",
+        "hs_email_optout",
+        "hs_email_communication_subscriptions_opted_in",
+        "hs_email_communication_subscriptions_opted_out"
     ]
 
     def __init__(self, access_token: Optional[str] = None):
@@ -161,6 +167,7 @@ class HubSpotClient:
 
                 domain = (props.get("domain") or "").strip()
                 website = (props.get("website") or "").strip()
+                company_type = (props.get("type") or "").strip()
                 kvk = (props.get("kvk_nummer") or props.get("kvk") or "").strip()
                 street = (props.get("address") or "").strip()
                 zip_code = (props.get("zip") or "").strip()
@@ -188,6 +195,20 @@ class HubSpotClient:
                         c_ph = (c_props.get("phone") or c_props.get("mobilephone") or "").strip()
                         c_job = (c_props.get("jobtitle") or "").strip()
 
+                        # Nieuwsbrief status bepalen
+                        opt_in_str = (c_props.get("hs_email_communication_subscriptions_opted_in") or "").strip()
+                        opt_out_str = (c_props.get("hs_email_communication_subscriptions_opted_out") or "").strip()
+                        global_optout = str(c_props.get("hs_email_optout") or "").lower() in ("true", "1")
+                        opt_ins = [s.strip() for s in opt_in_str.split(";") if s.strip()]
+                        opt_outs = [s.strip() for s in opt_out_str.split(";") if s.strip()]
+
+                        if global_optout or self.NEWSLETTER_SUBSCRIPTION_ID in opt_outs:
+                            newsletter_status = "UNSUBSCRIBED"
+                        elif self.NEWSLETTER_SUBSCRIPTION_ID in opt_ins:
+                            newsletter_status = "SUBSCRIBED"
+                        else:
+                            newsletter_status = "NOT_SPECIFIED"
+
                         contact_entry = {
                             "id": cid,
                             "name": c_full,
@@ -196,7 +217,8 @@ class HubSpotClient:
                             "email": c_mail,
                             "phone": c_ph,
                             "job_title": c_job,
-                            "is_primary": False
+                            "is_primary": False,
+                            "newsletter_status": newsletter_status
                         }
                         contact_list.append(contact_entry)
 
@@ -217,14 +239,14 @@ class HubSpotClient:
                     db.execute(f"""
                         UPDATE {prefix}hubspot_cache
                         SET name = %s, domain = %s, website = %s, kvk_number = %s,
-                            street = %s, postal_code = %s, city = %s, phone = %s,
+                            street = %s, postal_code = %s, city = %s, phone = %s, company_type = %s,
                             silvasoft_customer_number = %s, contacts_json = %s,
                             primary_contact_name = %s, primary_contact_email = %s, primary_contact_phone = %s,
                             raw_json = %s, synced_at = %s
                         WHERE hubspot_id = %s
                     """, (
                         name, domain, website, kvk,
-                        street, zip_code, city, phone,
+                        street, zip_code, city, phone, company_type,
                         silvasoft_cust_no, contacts_json,
                         primary_name, primary_email, primary_phone,
                         raw_json, now_str, hubspot_id
@@ -233,14 +255,14 @@ class HubSpotClient:
                     db.execute(f"""
                         INSERT INTO {prefix}hubspot_cache (
                             hubspot_id, name, domain, website, kvk_number,
-                            street, postal_code, city, phone,
+                            street, postal_code, city, phone, company_type,
                             silvasoft_customer_number, contacts_json,
                             primary_contact_name, primary_contact_email, primary_contact_phone,
                             raw_json, synced_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         hubspot_id, name, domain, website, kvk,
-                        street, zip_code, city, phone,
+                        street, zip_code, city, phone, company_type,
                         silvasoft_cust_no, contacts_json,
                         primary_name, primary_email, primary_phone,
                         raw_json, now_str
@@ -364,6 +386,53 @@ class HubSpotClient:
         resp = self._request_with_retry("PATCH", url, json={"properties": properties})
         resp.raise_for_status()
         return resp.json()
+
+    def subscribe_contact(self, email: str, legal_basis: str = "LEGITIMATE_INTEREST_CLIENT", explanation: str = "Ingeschreven via ZWOL Sync") -> Dict[str, Any]:
+        """Schrijft een contactpersoon in voor de ZWOL Nieuwsbrief (123809007)."""
+        email_clean = (email or "").strip().lower()
+        if not email_clean:
+            raise ValueError("E-mailadres is verplicht voor inschrijving.")
+
+        url = f"{self.BASE_URL}/communication-preferences/v3/subscribe"
+        payload = {
+            "emailAddress": email_clean,
+            "subscriptionId": self.NEWSLETTER_SUBSCRIPTION_ID,
+            "legalBasis": legal_basis,
+            "explanation": explanation
+        }
+        resp = self._request_with_retry("POST", url, json=payload)
+        resp.raise_for_status()
+        res_data = resp.json() if resp.text else {"status": "ok"}
+        logger.info(f"✅ Contact '{email_clean}' succesvol ingeschreven voor nieuwsbrief (123809007).")
+        return res_data
+
+    def update_contact_newsletter_status_in_cache(self, email: str, new_status: str):
+        """Werkt de nieuwsbrief-status van een contact bij in de lokale database cache."""
+        email_clean = (email or "").strip().lower()
+        if not email_clean:
+            return
+
+        prefix = Config.DB_TABLE_PREFIX
+        with get_db() as db:
+            rows = db.fetchall(f"SELECT hubspot_id, contacts_json FROM {prefix}hubspot_cache WHERE contacts_json LIKE %s", (f"%{email_clean}%",))
+            for row in rows:
+                c_json = row.get("contacts_json")
+                if not c_json:
+                    continue
+                try:
+                    contacts = json.loads(c_json)
+                    changed = False
+                    for c in contacts:
+                        if (c.get("email") or "").strip().lower() == email_clean:
+                            c["newsletter_status"] = new_status
+                            changed = True
+                    if changed:
+                        db.execute(
+                            f"UPDATE {prefix}hubspot_cache SET contacts_json = %s WHERE hubspot_id = %s",
+                            (json.dumps(contacts), row["hubspot_id"])
+                        )
+                except Exception as e:
+                    logger.warning(f"Kon contacts_json niet bijwerken voor {row.get('hubspot_id')}: {e}")
 
 
 

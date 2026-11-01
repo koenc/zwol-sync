@@ -187,6 +187,7 @@ def init_db():
                 postal_code TEXT,
                 city TEXT,
                 phone TEXT,
+                company_type TEXT,
                 silvasoft_customer_number TEXT,
                 contacts_json TEXT,
                 primary_contact_name TEXT,
@@ -301,6 +302,7 @@ def init_db():
                 `postal_code` VARCHAR(20) NULL,
                 `city` VARCHAR(100) NULL,
                 `phone` VARCHAR(50) NULL,
+                `company_type` VARCHAR(100) NULL,
                 `silvasoft_customer_number` VARCHAR(50) NULL,
                 `contacts_json` LONGTEXT NULL,
                 `primary_contact_name` VARCHAR(255) NULL,
@@ -383,6 +385,15 @@ def init_db():
                 UNIQUE KEY `uq_ignored_contact` (`customer_number`, `contact_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             """)
+
+        # Migraties voor bestaande tabellen
+        try:
+            if db.is_sqlite:
+                db.execute(f"ALTER TABLE {prefix}hubspot_cache ADD COLUMN company_type TEXT;")
+            else:
+                db.execute(f"ALTER TABLE `{prefix}hubspot_cache` ADD COLUMN `company_type` VARCHAR(100) NULL;")
+        except Exception:
+            pass  # Kolom bestaat al
 
     logger.info(f"Database tabellen met prefix '{prefix}' succesvol gecontroleerd/aangemaakt.")
 

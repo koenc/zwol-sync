@@ -1,5 +1,6 @@
 import logging
 import datetime
+import json
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from app.config import Config, load_env
 from app.database import init_db, get_db
@@ -43,6 +44,101 @@ def index():
         companies=data["companies"],
         active_filter=filter_type,
         queue_summary=queue_summary
+    )
+
+
+COMPANY_TYPE_LABELS = {
+    "CAFÉ": "Horeca - Café",
+    "SPORTKANTINE": "Horeca - Sportkantine",
+    "STRANDTENT": "Horeca - Strandtent",
+    "Horeca - Overig": "Horeca - Overig",
+    "RESTAURANT": "Horeca - Restaurant",
+    "Retail - Slijterij": "Retail - Slijterij",
+    "Retail - Geschenkwinkel": "Retail - Geschenkwinkel",
+    "Retail - Supermarkt": "Retail - Supermarkt",
+    "E-TAIL": "E-tail",
+    "GESCHENKBUSINESS": "D2B - Geschenkbusiness",
+    "OTHER": "D2B - Overig",
+    "D2C": "D2C",
+    "BROUWERIJ": "Brouwerij",
+    "Leverancier": "Leverancier",
+    "Vereniging": "Vereniging"
+}
+
+
+@app.route("/newsletter")
+def page_newsletter():
+    prefix = Config.DB_TABLE_PREFIX
+    with get_db() as db:
+        companies = db.fetchall(f"""
+            SELECT hubspot_id, name, company_type, contacts_json, synced_at
+            FROM {prefix}hubspot_cache
+            ORDER BY name ASC
+        """)
+
+    all_contacts = []
+    stats = {
+        "total_contacts": 0,
+        "subscribed": 0,
+        "never_subscribed": 0,
+        "unsubscribed": 0,
+        "without_type": 0,
+        "total_companies": len(companies)
+    }
+
+    type_counts = {}
+
+    for c in companies:
+        c_type = (c.get("company_type") or "").strip()
+        type_label = COMPANY_TYPE_LABELS.get(c_type, c_type) if c_type else "Geen type ingesteld"
+        if not c_type:
+            stats["without_type"] += 1
+
+        contacts_raw = c.get("contacts_json") or "[]"
+        try:
+            contacts = json.loads(contacts_raw)
+        except Exception:
+            contacts = []
+
+        if not contacts:
+            continue
+
+        if c_type:
+            type_counts[type_label] = type_counts.get(type_label, 0) + len(contacts)
+
+        for ct in contacts:
+            c_email = (ct.get("email") or "").strip()
+            c_name = (ct.get("name") or "").strip() or "(Naamloos contact)"
+            c_status = ct.get("newsletter_status") or "NOT_SPECIFIED"
+
+            stats["total_contacts"] += 1
+            if c_status == "SUBSCRIBED":
+                stats["subscribed"] += 1
+            elif c_status == "UNSUBSCRIBED":
+                stats["unsubscribed"] += 1
+            else:
+                stats["never_subscribed"] += 1
+
+            all_contacts.append({
+                "company_id": c.get("hubspot_id"),
+                "company_name": c.get("name"),
+                "company_type": c_type,
+                "company_type_label": type_label,
+                "has_type": bool(c_type),
+                "contact_id": ct.get("id"),
+                "name": c_name,
+                "email": c_email,
+                "phone": ct.get("phone") or "",
+                "job_title": ct.get("job_title") or "",
+                "is_primary": bool(ct.get("is_primary")),
+                "newsletter_status": c_status
+            })
+
+    return render_template(
+        "newsletter.html",
+        contacts=all_contacts,
+        stats=stats,
+        company_types=sorted(type_counts.keys())
     )
 
 
@@ -301,6 +397,117 @@ def api_search_hubspot():
                 ORDER BY name ASC LIMIT 20
             """, (term, term, term))
     return jsonify({"success": True, "results": rows})
+
+
+@app.route("/api/newsletter/subscribe", methods=["POST"])
+def api_newsletter_subscribe():
+    """Schrijft één contactpersoon in voor de ZWOL Nieuwsbrief in HubSpot."""
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip()
+    contact_name = data.get("contact_name") or ""
+    company_name = data.get("company_name") or ""
+
+    if not email:
+        return jsonify({"success": False, "error": "E-mailadres is verplicht."}), 400
+
+    prefix = Config.DB_TABLE_PREFIX
+    # Strikte privacy-controle (AVG/GDPR): Mag NOOIT een zelf uitgeschreven contact overschrijven!
+    with get_db() as db:
+        rows = db.fetchall(f"SELECT contacts_json FROM {prefix}hubspot_cache WHERE contacts_json LIKE %s", (f"%{email}%",))
+        for r in rows:
+            try:
+                for c in json.loads(r.get("contacts_json") or "[]"):
+                    if (c.get("email") or "").strip().lower() == email.lower():
+                        if c.get("newsletter_status") == "UNSUBSCRIBED":
+                            return jsonify({
+                                "success": False,
+                                "error": "Deze contactpersoon heeft zich zelf afgemeld voor de nieuwsbrief. Conform de privacywetgeving (AVG) mag deze persoon niet handmatig worden aangemeld."
+                            }), 400
+            except Exception:
+                pass
+
+    try:
+        hubspot_client.subscribe_contact(email)
+        hubspot_client.update_contact_newsletter_status_in_cache(email, "SUBSCRIBED")
+
+        # Registreer in geschiedenis
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        target_name = f"{company_name} - {contact_name} ({email})".strip(" -")
+        with get_db() as db:
+            db.execute(f"""
+                INSERT INTO {prefix}history (entity_name, target_system, change_summary, created_at)
+                VALUES (%s, %s, %s, %s)
+            """, (target_name, "HUBSPOT", "Ingeschreven voor ZWOL Nieuwsbrief (123809007)", now_str))
+
+        return jsonify({"success": True, "message": f"{email} succesvol ingeschreven voor de nieuwsbrief!"})
+    except Exception as e:
+        logger.error(f"Fout bij inschrijven {email}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/newsletter/bulk-subscribe", methods=["POST"])
+def api_newsletter_bulk_subscribe():
+    """Schrijft meerdere niet-ingeschreven contactpersonen in bulk in voor de ZWOL Nieuwsbrief."""
+    data = request.get_json() or {}
+    target_emails = data.get("emails")  # optionele lijst met specifieke e-mails
+
+    prefix = Config.DB_TABLE_PREFIX
+    with get_db() as db:
+        companies = db.fetchall(f"SELECT contacts_json FROM {prefix}hubspot_cache")
+
+    eligible_emails = set()
+    unsubscribed_emails = set()
+
+    for c in companies:
+        try:
+            contacts = json.loads(c.get("contacts_json") or "[]")
+            for ct in contacts:
+                em = (ct.get("email") or "").strip().lower()
+                if not em:
+                    continue
+                st = ct.get("newsletter_status")
+                if st == "UNSUBSCRIBED":
+                    unsubscribed_emails.add(em)
+                elif st == "NOT_SPECIFIED":
+                    eligible_emails.add(em)
+        except Exception:
+            pass
+
+    # Nooit uitgeschreven contacten toestaan
+    eligible_emails = eligible_emails - unsubscribed_emails
+
+    if target_emails is not None:
+        selected_emails = [e.strip().lower() for e in target_emails if e.strip().lower() in eligible_emails]
+    else:
+        selected_emails = list(eligible_emails)
+
+    if not selected_emails:
+        return jsonify({"success": False, "error": "Geen niet-ingeschreven contacten gevonden om aan te melden."}), 400
+
+    success_count = 0
+    errors = []
+
+    for em in selected_emails:
+        try:
+            hubspot_client.subscribe_contact(em)
+            hubspot_client.update_contact_newsletter_status_in_cache(em, "SUBSCRIBED")
+            success_count += 1
+        except Exception as e:
+            errors.append(f"{em}: {str(e)}")
+
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db() as db:
+        db.execute(f"""
+            INSERT INTO {prefix}history (entity_name, target_system, change_summary, created_at)
+            VALUES (%s, %s, %s, %s)
+        """, ("Bulk Inschrijving", "HUBSPOT", f"{success_count} contacten ingeschreven voor ZWOL Nieuwsbrief", now_str))
+
+    return jsonify({
+        "success": True,
+        "subscribed_count": success_count,
+        "errors_count": len(errors),
+        "message": f"{success_count} contacten succesvol ingeschreven voor de nieuwsbrief!"
+    })
 
 
 # Initialisatie
