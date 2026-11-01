@@ -262,6 +262,16 @@ def init_db():
                 UNIQUE (customer_number, contact_id)
             );
             """)
+
+            db.execute(f"""
+            CREATE TABLE IF NOT EXISTS {prefix}hubspot_company_types (
+                type_value TEXT PRIMARY KEY,
+                type_label TEXT NOT NULL,
+                display_order INTEGER DEFAULT 0,
+                is_hidden INTEGER DEFAULT 0,
+                updated_at TEXT NOT NULL
+            );
+            """)
         else:
             # MariaDB DDL
             db.execute(f"""
@@ -383,6 +393,17 @@ def init_db():
                 `contact_email` VARCHAR(255) NULL,
                 `created_at` DATETIME NOT NULL,
                 UNIQUE KEY `uq_ignored_contact` (`customer_number`, `contact_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+            db.execute(f"""
+            CREATE TABLE IF NOT EXISTS `{prefix}hubspot_company_types` (
+                `type_value` VARCHAR(100) NOT NULL,
+                `type_label` VARCHAR(255) NOT NULL,
+                `display_order` INT DEFAULT 0,
+                `is_hidden` TINYINT DEFAULT 0,
+                `updated_at` DATETIME NOT NULL,
+                PRIMARY KEY (`type_value`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             """)
 

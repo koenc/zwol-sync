@@ -117,6 +117,93 @@ class HubSpotClient:
                 if c_resp.status_code in (200, 201):
                     logger.info(f"✅ Property '{prop['name']}' succesvol aangemaakt in HubSpot.")
 
+    def fetch_and_cache_company_type_options(self) -> List[Dict[str, Any]]:
+        """
+        Haalt de actuele bedrijfstypen en labels op uit de HubSpot Property API
+        en slaat ze op in sync_hubspot_company_types.
+        """
+        url = f"{self.BASE_URL}/crm/v3/properties/companies/type"
+        resp = self._request_with_retry("GET", url)
+        if resp.status_code != 200:
+            logger.warning(f"Kon bedrijfstypen niet ophalen uit HubSpot: {resp.status_code} {resp.text}")
+            return self.get_company_type_options(force_refresh=False)
+
+        data = resp.json()
+        options = data.get("options", [])
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        prefix = Config.DB_TABLE_PREFIX
+
+        res_options = []
+        with get_db() as db:
+            for opt in options:
+                val = str(opt.get("value") or "").strip()
+                lbl = str(opt.get("label") or "").strip()
+                hidden = 1 if opt.get("hidden") else 0
+                display_order = int(opt.get("displayOrder") or 0)
+                if not val:
+                    continue
+                res_options.append({
+                    "value": val,
+                    "label": lbl or val,
+                    "hidden": bool(hidden),
+                    "displayOrder": display_order
+                })
+                if db.is_sqlite:
+                    db.execute(f"""
+                        INSERT INTO {prefix}hubspot_company_types (type_value, type_label, display_order, is_hidden, updated_at)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT(type_value) DO UPDATE SET
+                            type_label = excluded.type_label,
+                            display_order = excluded.display_order,
+                            is_hidden = excluded.is_hidden,
+                            updated_at = excluded.updated_at
+                    """, (val, lbl or val, display_order, hidden, now_str))
+                else:
+                    db.execute(f"""
+                        INSERT INTO `{prefix}hubspot_company_types` (`type_value`, `type_label`, `display_order`, `is_hidden`, `updated_at`)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            `type_label` = VALUES(`type_label`),
+                            `display_order` = VALUES(`display_order`),
+                            `is_hidden` = VALUES(`is_hidden`),
+                            `updated_at` = VALUES(`updated_at`)
+                    """, (val, lbl or val, display_order, hidden, now_str))
+
+        logger.info(f"✅ {len(res_options)} HubSpot bedrijfstypen gesynchroniseerd naar database.")
+        return [o for o in res_options if not o["hidden"]]
+
+    def get_company_type_options(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        """
+        Geeft de lijst van beschikbare bedrijfstypen terug (value + label).
+        Leest eerst uit de database cache. Indien leeg of force_refresh=True,
+        haalt hij ze direct op uit HubSpot.
+        """
+        prefix = Config.DB_TABLE_PREFIX
+        if not force_refresh:
+            try:
+                with get_db() as db:
+                    rows = db.fetchall(f"""
+                        SELECT type_value, type_label, display_order, is_hidden
+                        FROM {prefix}hubspot_company_types
+                        WHERE is_hidden = 0
+                        ORDER BY display_order ASC, type_label ASC
+                    """)
+                    if rows:
+                        return [{"value": r["type_value"], "label": r["type_label"]} for r in rows]
+            except Exception as e:
+                logger.warning(f"Fout bij uitlezen hubspot_company_types uit DB: {e}")
+
+        try:
+            return self.fetch_and_cache_company_type_options()
+        except Exception as e:
+            logger.error(f"Fout bij ophalen bedrijfstypen uit HubSpot: {e}")
+            return []
+
+    def get_company_type_labels_map(self) -> Dict[str, str]:
+        """Geeft een mapping dict {type_value: type_label} terug."""
+        options = self.get_company_type_options()
+        return {opt["value"]: opt["label"] for opt in options}
+
     def sync_companies_to_cache(self) -> int:
         """Haalt alle bedrijven en hun gekoppelde contacten op uit HubSpot en slaat ze op in sync_hubspot_cache."""
         logger.info("Start ophalen bedrijven uit HubSpot...")
@@ -124,6 +211,10 @@ class HubSpotClient:
             raise ValueError("HubSpot access token ontbreekt.")
 
         self.ensure_silvasoft_property()
+        try:
+            self.fetch_and_cache_company_type_options()
+        except Exception as e:
+            logger.warning(f"Kon bedrijfstype-opties niet verversen tijdens sync: {e}")
 
         url = f"{self.BASE_URL}/crm/v3/objects/companies"
         all_companies = []

@@ -47,43 +47,6 @@ def index():
     )
 
 
-COMPANY_TYPE_LABELS = {
-    "CAFÉ": "Horeca - Café",
-    "SPORTKANTINE": "Horeca - Sportkantine",
-    "STRANDTENT": "Horeca - Strandtent",
-    "Horeca - Overig": "Horeca - Overig",
-    "RESTAURANT": "Horeca - Restaurant",
-    "Retail - Slijterij": "Retail - Slijterij",
-    "Retail - Geschenkwinkel": "Retail - Geschenkwinkel",
-    "Retail - Supermarkt": "Retail - Supermarkt",
-    "E-TAIL": "E-tail",
-    "GESCHENKBUSINESS": "D2B - Geschenkbusiness",
-    "OTHER": "D2B - Overig",
-    "D2C": "D2C",
-    "BROUWERIJ": "Brouwerij",
-    "Leverancier": "Leverancier",
-    "Vereniging": "Vereniging"
-}
-
-COMPANY_TYPE_OPTIONS = [
-    {"value": "RESTAURANT", "label": "Horeca - Restaurant"},
-    {"value": "CAFÉ", "label": "Horeca - Café"},
-    {"value": "STRANDTENT", "label": "Horeca - Strandtent"},
-    {"value": "SPORTKANTINE", "label": "Horeca - Sportkantine"},
-    {"value": "Horeca - Overig", "label": "Horeca - Overig"},
-    {"value": "Retail - Slijterij", "label": "Retail - Slijterij"},
-    {"value": "Retail - Geschenkwinkel", "label": "Retail - Geschenkwinkel"},
-    {"value": "Retail - Supermarkt", "label": "Retail - Supermarkt"},
-    {"value": "E-TAIL", "label": "E-tail"},
-    {"value": "GESCHENKBUSINESS", "label": "D2B - Geschenkbusiness"},
-    {"value": "OTHER", "label": "D2B - Overig"},
-    {"value": "D2C", "label": "D2C"},
-    {"value": "BROUWERIJ", "label": "Brouwerij"},
-    {"value": "Leverancier", "label": "Leverancier"},
-    {"value": "Vereniging", "label": "Vereniging"}
-]
-
-
 @app.route("/newsletter")
 def page_newsletter():
     prefix = Config.DB_TABLE_PREFIX
@@ -105,10 +68,12 @@ def page_newsletter():
     }
 
     type_counts = {}
+    type_labels_map = hubspot_client.get_company_type_labels_map()
+    type_options = hubspot_client.get_company_type_options()
 
     for c in companies:
         c_type = (c.get("company_type") or "").strip()
-        type_label = COMPANY_TYPE_LABELS.get(c_type, c_type) if c_type else "Geen type ingesteld"
+        type_label = type_labels_map.get(c_type, c_type) if c_type else "Geen type ingesteld"
         if not c_type:
             stats["without_type"] += 1
 
@@ -152,12 +117,15 @@ def page_newsletter():
                 "newsletter_status": c_status
             })
 
+    # Combineer typen met contacten en alle beschikbare opties uit HubSpot
+    all_available_type_labels = set(type_counts.keys()).union({opt["label"] for opt in type_options if opt.get("label")})
+
     return render_template(
         "newsletter.html",
         contacts=all_contacts,
         stats=stats,
-        company_types=sorted(type_counts.keys()),
-        type_options=COMPANY_TYPE_OPTIONS
+        company_types=sorted(all_available_type_labels),
+        type_options=type_options
     )
 
 
@@ -447,7 +415,8 @@ def api_update_company_type():
 
         # 3. Log in geschiedenis
         now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        type_label = COMPANY_TYPE_LABELS.get(new_type, new_type) if new_type else "Geen type"
+        type_labels_map = hubspot_client.get_company_type_labels_map()
+        type_label = type_labels_map.get(new_type, new_type) if new_type else "Geen type"
         with get_db() as db:
             db.execute(f"""
                 INSERT INTO {prefix}history (entity_name, target_system, change_summary, created_at)
