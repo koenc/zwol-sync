@@ -308,25 +308,38 @@ function escapeHtml(text) {
 // CONTACTPERSOON ACTIES & SYNCHRONISATIE
 // --------------------------------------------------------------------------
 
-async function syncContactPhone(target, entityId, newVal, oldVal, contactGuid) {
+async function syncContactField(target, entityId, field, newVal, oldVal, contactGuid) {
+  const fieldLabels = {
+    'phone': 'telefoonnummer',
+    'email': 'e-mailadres',
+    'name': 'naam'
+  };
+  const actionMap = {
+    'phone': 'UPDATE_CONTACT_PHONE',
+    'email': 'UPDATE_CONTACT_EMAIL',
+    'name': 'UPDATE_CONTACT_NAME'
+  };
+  const label = fieldLabels[field] || field;
+  const action = actionMap[field] || `UPDATE_CONTACT_${field.toUpperCase()}`;
+
   if (target === 'HUBSPOT') {
-    if (!confirm(`Wil je het telefoonnummer in HubSpot bijwerken naar '${newVal || '(leeg)'}'?`)) return;
+    if (!confirm(`Wil je contactpersoon ${label} in HubSpot bijwerken naar '${newVal || '(leeg)'}'?`)) return;
     try {
       const res = await fetch('/api/queue/apply-field', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           target: 'HUBSPOT',
-          action: 'UPDATE_CONTACT_PHONE',
+          action: action,
           entity_id: entityId,
-          field_name: 'phone',
+          field_name: field,
           new_value: newVal,
           old_value: oldVal
         })
       });
       const data = await res.json();
       if (data.success) {
-        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
+        showToast(`Contactpersoon ${label} direct bijgewerkt in HubSpot!`, 'success');
         setTimeout(() => location.reload(), 800);
       } else {
         showToast(`Fout: ${data.error}`, 'error');
@@ -335,16 +348,16 @@ async function syncContactPhone(target, entityId, newVal, oldVal, contactGuid) {
       showToast(`Fout: ${err.message}`, 'error');
     }
   } else if (target === 'SILVASOFT') {
-    if (!confirm(`Wil je het telefoonnummer '${newVal}' in Silvasoft plaatsen (via de wachtrij)?`)) return;
+    if (!confirm(`Wil je contactpersoon ${label} '${newVal}' in Silvasoft plaatsen (via de wachtrij)?`)) return;
     try {
       const res = await fetch('/api/queue/apply-field', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           target: 'SILVASOFT',
-          action: 'UPDATE_CONTACT_PHONE',
+          action: action,
           entity_id: entityId,
-          field_name: 'phone',
+          field_name: field,
           new_value: newVal,
           old_value: oldVal,
           payload: { contact_guid: contactGuid }
@@ -361,6 +374,15 @@ async function syncContactPhone(target, entityId, newVal, oldVal, contactGuid) {
       showToast(`Fout: ${err.message}`, 'error');
     }
   }
+}
+
+function handleSyncContactFieldClick(btn) {
+  const d = btn.dataset;
+  syncContactField(d.target, d.entityId, d.field, d.newVal, d.oldVal, d.cguid);
+}
+
+async function syncContactPhone(target, entityId, newVal, oldVal, contactGuid) {
+  return syncContactField(target, entityId, 'phone', newVal, oldVal, contactGuid);
 }
 
 async function addContactToSilvasoft(custNo, name, email, phone) {
@@ -499,21 +521,29 @@ function openCustomValueModal(custNo, hsId, field, label, ssVal, hsVal, companyN
   }, 50);
 }
 
-function openCustomContactPhoneModal(custNo, hsId, hsContactId, ssContactGuid, contactName, ssVal, hsVal, companyName) {
+function openCustomContactFieldModal(custNo, hsId, hsContactId, ssContactGuid, contactName, field, ssVal, hsVal, companyName) {
+  const fieldLabels = {
+    'phone': 'Telefoonnummer',
+    'email': 'E-mailadres',
+    'name': 'Naam'
+  };
+  const labelText = fieldLabels[field] || field;
+
   currentCustomValData = {
-    isContactPhone: true,
+    isContactField: true,
+    contactField: field,
     custNo: custNo,
     hsId: hsId,
     hsContactId: hsContactId,
     ssContactGuid: ssContactGuid,
-    field: 'phone',
-    label: `Telefoon: ${contactName}`,
+    field: field,
+    label: `${labelText}: ${contactName}`,
     ssVal: ssVal,
     hsVal: hsVal,
     companyName: companyName
   };
 
-  document.getElementById('custom-val-title').innerText = `Telefoonnummer aanpassen: ${contactName}`;
+  document.getElementById('custom-val-title').innerText = `${labelText} aanpassen: ${contactName}`;
   document.getElementById('custom-val-subtitle').innerText = `${companyName || 'Bedrijf'} (#${custNo})`;
   document.getElementById('custom-val-curr-ss').innerText = ssVal || '(leeg)';
   document.getElementById('custom-val-curr-hs').innerText = hsVal || '(leeg)';
@@ -527,6 +557,10 @@ function openCustomContactPhoneModal(custNo, hsId, hsContactId, ssContactGuid, c
     input.focus();
     input.select();
   }, 50);
+}
+
+function openCustomContactPhoneModal(custNo, hsId, hsContactId, ssContactGuid, contactName, ssVal, hsVal, companyName) {
+  return openCustomContactFieldModal(custNo, hsId, hsContactId, ssContactGuid, contactName, 'phone', ssVal, hsVal, companyName);
 }
 
 function closeCustomValueModal() {
@@ -544,7 +578,12 @@ async function submitCustomValue(target) {
     if (!confirm('Weet je zeker dat je dit veld leeg wilt maken?')) return;
   }
 
-  const { isContactPhone, custNo, hsId, hsContactId, ssContactGuid, field, label } = currentCustomValData;
+  const { isContactPhone, isContactField, contactField, custNo, hsId, hsContactId, ssContactGuid, field, label } = currentCustomValData;
+  const isContact = isContactPhone || isContactField;
+  const fType = contactField || (isContactPhone ? 'phone' : field);
+  let contactAction = 'UPDATE_CONTACT_PHONE';
+  if (fType === 'email') contactAction = 'UPDATE_CONTACT_EMAIL';
+  else if (fType === 'name') contactAction = 'UPDATE_CONTACT_NAME';
 
   showToast('Waarde wordt opgeslagen...', 'info');
 
@@ -555,8 +594,8 @@ async function submitCustomValue(target) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           target: 'HUBSPOT',
-          action: isContactPhone ? 'UPDATE_CONTACT_PHONE' : 'UPDATE_FIELD',
-          entity_id: isContactPhone ? hsContactId : hsId,
+          action: isContact ? contactAction : 'UPDATE_FIELD',
+          entity_id: isContact ? hsContactId : hsId,
           field_name: field,
           new_value: newVal,
           old_value: currentCustomValData.hsVal
@@ -570,13 +609,13 @@ async function submitCustomValue(target) {
     }
 
     if (target === 'BOTH' || target === 'SILVASOFT') {
-      const ssPayload = isContactPhone ? { contact_guid: ssContactGuid } : {};
+      const ssPayload = isContact ? { contact_guid: ssContactGuid } : {};
       const ssRes = await fetch('/api/queue/apply-field', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           target: 'SILVASOFT',
-          action: isContactPhone ? 'UPDATE_CONTACT_PHONE' : 'UPDATE_FIELD',
+          action: isContact ? contactAction : 'UPDATE_FIELD',
           entity_id: custNo,
           field_name: field,
           new_value: newVal,
@@ -616,7 +655,11 @@ function handleCustomValueClick(btn) {
   openCustomValueModal(d.custNo, d.hsId, d.field, d.label, d.ssVal, d.hsVal, d.compName);
 }
 
-function handleCustomContactPhoneClick(btn) {
+function handleCustomContactFieldClick(btn) {
   const d = btn.dataset;
-  openCustomContactPhoneModal(d.custNo, d.hsId, d.hsCid, d.ssCguid, d.cname, d.ssVal, d.hsVal, d.compName);
+  openCustomContactFieldModal(d.custNo, d.hsId, d.hsCid, d.ssCguid, d.cname, d.field, d.ssVal, d.hsVal, d.compName);
+}
+
+function handleCustomContactPhoneClick(btn) {
+  return handleCustomContactFieldClick(btn);
 }

@@ -66,16 +66,22 @@ class DiffService:
         hs_by_id = {str(h["hubspot_id"]): h for h in hs_rows}
         match_by_ss = {str(m["silvasoft_customer_number"]): str(m["hubspot_id"]) for m in matches}
 
-        # Indexeer pending wachtrijtaken op (entity_id, field/action)
-        pending_by_entity_field = {}
+        # Indexeer pending wachtrijtaken
+        pending_company_tasks = {}
+        pending_contact_tasks = {}
         for pr in pending_rows:
             ent = str(pr.get("entity_id") or "")
             fld = str(pr.get("field_name") or "")
             act = str(pr.get("action") or "")
-            if fld:
-                pending_by_entity_field[(ent, fld)] = pr
-            if act:
-                pending_by_entity_field[(ent, act)] = pr
+            if act == "UPDATE_FIELD":
+                if fld:
+                    pending_company_tasks[(ent, fld)] = pr
+            else:
+                # Contact taken (UPDATE_CONTACT_*, ADD_CONTACT)
+                if act:
+                    pending_contact_tasks[(ent, act)] = pr
+                if fld:
+                    pending_contact_tasks[(ent, fld)] = pr
 
         companies_list = []
         stats = {
@@ -122,7 +128,7 @@ class DiffService:
 
             def check_field_diff(field_name, field_label, ss_val, hs_val, is_equal):
                 if not is_equal:
-                    p_task = pending_by_entity_field.get((cust_no, field_name)) or pending_by_entity_field.get((hs_id, field_name))
+                    p_task = pending_company_tasks.get((cust_no, field_name)) or pending_company_tasks.get((hs_id, field_name))
                     if p_task:
                         sched_dt = p_task.get("scheduled_at")
                         sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
@@ -194,7 +200,7 @@ class DiffService:
             ss_contacts = json.loads(ss.get("contacts_json") or "[]")
             hs_contacts = json.loads(hs.get("contacts_json") or "[]")
             contacts_diff, identical_contacts, ignored_contacts, pending_contacts = self._compare_contacts(
-                ss_contacts, hs_contacts, cust_no, hs_id, ignored_set, pending_by_entity_field
+                ss_contacts, hs_contacts, cust_no, hs_id, ignored_set, pending_contact_tasks
             )
 
             diff_count = len(diffs) + len(contacts_diff)
@@ -318,15 +324,35 @@ class DiffService:
                         "hubspot": h_nm
                     })
                 elif normalize_text(s_nm).lower() != normalize_text(h_nm).lower() and (s_nm or h_nm):
-                    diffs.append({
-                        "type": "CONTACT_NAME_DIFF",
-                        "contact_name": c_name,
-                        "contact_email": sc.get("email") or match_hc.get("email"),
-                        "silvasoft": s_nm or "(leeg)",
-                        "hubspot": h_nm or "(leeg)",
-                        "hs_contact_id": str(match_hc.get("id")),
-                        "ss_contact_guid": str(sc.get("guid") or "")
-                    })
+                    p_task = (
+                        pending_by_entity_field.get((cust_no, "name")) or
+                        pending_by_entity_field.get((cust_no, "UPDATE_CONTACT_NAME")) or
+                        pending_by_entity_field.get((str(match_hc.get("id")), "name")) or
+                        pending_by_entity_field.get((str(match_hc.get("id")), "UPDATE_CONTACT_NAME"))
+                    )
+                    if p_task:
+                        sched_dt = p_task.get("scheduled_at")
+                        sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                        pending_contacts.append({
+                            "type": "PENDING_CONTACT_FIELD",
+                            "label": f"👤 Naam: {c_name}",
+                            "silvasoft": s_nm or "(leeg)",
+                            "hubspot": h_nm or "(leeg)",
+                            "target": p_task.get("target"),
+                            "new_value": p_task.get("new_value") or "",
+                            "scheduled_at": sched_str,
+                            "task_id": p_task.get("id")
+                        })
+                    else:
+                        diffs.append({
+                            "type": "CONTACT_NAME_DIFF",
+                            "contact_name": c_name,
+                            "contact_email": sc.get("email") or match_hc.get("email"),
+                            "silvasoft": s_nm or "(leeg)",
+                            "hubspot": h_nm or "(leeg)",
+                            "hs_contact_id": str(match_hc.get("id")),
+                            "ss_contact_guid": str(sc.get("guid") or "")
+                        })
 
                 # B. Contactpersoon E-mail vergelijken
                 s_mail_clean = clean_str(sc.get("email")).lower()
@@ -338,15 +364,35 @@ class DiffService:
                         "hubspot": match_hc.get("email")
                     })
                 elif s_mail_clean != h_mail_clean and (s_mail_clean or h_mail_clean):
-                    diffs.append({
-                        "type": "CONTACT_EMAIL_DIFF",
-                        "contact_name": c_name,
-                        "contact_email": sc.get("email") or match_hc.get("email"),
-                        "silvasoft": sc.get("email") or "(leeg)",
-                        "hubspot": match_hc.get("email") or "(leeg)",
-                        "hs_contact_id": str(match_hc.get("id")),
-                        "ss_contact_guid": str(sc.get("guid") or "")
-                    })
+                    p_task = (
+                        pending_by_entity_field.get((cust_no, "email")) or
+                        pending_by_entity_field.get((cust_no, "UPDATE_CONTACT_EMAIL")) or
+                        pending_by_entity_field.get((str(match_hc.get("id")), "email")) or
+                        pending_by_entity_field.get((str(match_hc.get("id")), "UPDATE_CONTACT_EMAIL"))
+                    )
+                    if p_task:
+                        sched_dt = p_task.get("scheduled_at")
+                        sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                        pending_contacts.append({
+                            "type": "PENDING_CONTACT_FIELD",
+                            "label": f"👤 E-mail: {c_name}",
+                            "silvasoft": sc.get("email") or "(leeg)",
+                            "hubspot": match_hc.get("email") or "(leeg)",
+                            "target": p_task.get("target"),
+                            "new_value": p_task.get("new_value") or "",
+                            "scheduled_at": sched_str,
+                            "task_id": p_task.get("id")
+                        })
+                    else:
+                        diffs.append({
+                            "type": "CONTACT_EMAIL_DIFF",
+                            "contact_name": c_name,
+                            "contact_email": sc.get("email") or match_hc.get("email"),
+                            "silvasoft": sc.get("email") or "(leeg)",
+                            "hubspot": match_hc.get("email") or "(leeg)",
+                            "hs_contact_id": str(match_hc.get("id")),
+                            "ss_contact_guid": str(sc.get("guid") or "")
+                        })
 
                 # C. Contactpersoon Telefoonnummer vergelijken
                 s_ph = clean_phone(sc.get("phone"))
@@ -356,7 +402,8 @@ class DiffService:
                     p_task = (
                         pending_by_entity_field.get((cust_no, "phone")) or
                         pending_by_entity_field.get((cust_no, "UPDATE_CONTACT_PHONE")) or
-                        pending_by_entity_field.get((str(match_hc.get("id")), "phone"))
+                        pending_by_entity_field.get((str(match_hc.get("id")), "phone")) or
+                        pending_by_entity_field.get((str(match_hc.get("id")), "UPDATE_CONTACT_PHONE"))
                     )
                     if p_task:
                         sched_dt = p_task.get("scheduled_at")

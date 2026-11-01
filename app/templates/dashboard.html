@@ -260,18 +260,50 @@
                 </div>
               {% elif cd.type == 'CONTACT_PHONE_DIFF' %}
                 <button class="btn-action-arrow btn-to-hs"
-                  data-target="HUBSPOT" data-entity-id="{{ cd.hs_contact_id }}" data-new-val="{{ cd.silvasoft }}" data-old-val="{{ cd.hubspot }}" onclick="syncContactPhone(this.dataset.target, this.dataset.entityId, this.dataset.newVal, this.dataset.oldVal)"
+                  data-target="HUBSPOT" data-entity-id="{{ cd.hs_contact_id }}" data-field="phone" data-new-val="{{ cd.silvasoft }}" data-old-val="{{ cd.hubspot }}" onclick="handleSyncContactFieldClick(this)"
                   title="Overschrijf telefoonnummer in HubSpot met '{{ cd.silvasoft }}'">
                   ➔
                 </button>
                 <button class="btn-action-arrow btn-to-ss"
-                  data-target="SILVASOFT" data-entity-id="{{ c.customer_number }}" data-new-val="{{ cd.hubspot }}" data-old-val="{{ cd.silvasoft }}" data-cguid="{{ cd.ss_contact_guid }}" onclick="syncContactPhone(this.dataset.target, this.dataset.entityId, this.dataset.newVal, this.dataset.oldVal, this.dataset.cguid)"
+                  data-target="SILVASOFT" data-entity-id="{{ c.customer_number }}" data-field="phone" data-new-val="{{ cd.hubspot }}" data-old-val="{{ cd.silvasoft }}" data-cguid="{{ cd.ss_contact_guid }}" onclick="handleSyncContactFieldClick(this)"
                   title="Plaats telefoonnummer in de Silvasoft-wachtrij">
                   ⬅
                 </button>
                 <button class="btn-action-arrow btn-edit-val"
-                  data-cust-no="{{ c.customer_number }}" data-hs-id="{{ c.hubspot_id }}" data-hs-cid="{{ cd.hs_contact_id }}" data-ss-cguid="{{ cd.ss_contact_guid }}" data-cname="{{ cd.contact_name }}" data-ss-val="{{ cd.silvasoft }}" data-hs-val="{{ cd.hubspot }}" data-comp-name="{{ c.name }}" onclick="handleCustomContactPhoneClick(this)"
+                  data-cust-no="{{ c.customer_number }}" data-hs-id="{{ c.hubspot_id }}" data-hs-cid="{{ cd.hs_contact_id }}" data-ss-cguid="{{ cd.ss_contact_guid }}" data-cname="{{ cd.contact_name }}" data-field="phone" data-ss-val="{{ cd.silvasoft }}" data-hs-val="{{ cd.hubspot }}" data-comp-name="{{ c.name }}" onclick="handleCustomContactFieldClick(this)"
                   title="Handmatig een nieuw telefoonnummer invoeren">
+                  ✏️
+                </button>
+              {% elif cd.type == 'CONTACT_EMAIL_DIFF' %}
+                <button class="btn-action-arrow btn-to-hs"
+                  data-target="HUBSPOT" data-entity-id="{{ cd.hs_contact_id }}" data-field="email" data-new-val="{{ cd.silvasoft }}" data-old-val="{{ cd.hubspot }}" onclick="handleSyncContactFieldClick(this)"
+                  title="Overschrijf e-mailadres in HubSpot met '{{ cd.silvasoft }}'">
+                  ➔
+                </button>
+                <button class="btn-action-arrow btn-to-ss"
+                  data-target="SILVASOFT" data-entity-id="{{ c.customer_number }}" data-field="email" data-new-val="{{ cd.hubspot }}" data-old-val="{{ cd.silvasoft }}" data-cguid="{{ cd.ss_contact_guid }}" onclick="handleSyncContactFieldClick(this)"
+                  title="Plaats e-mailadres in de Silvasoft-wachtrij">
+                  ⬅
+                </button>
+                <button class="btn-action-arrow btn-edit-val"
+                  data-cust-no="{{ c.customer_number }}" data-hs-id="{{ c.hubspot_id }}" data-hs-cid="{{ cd.hs_contact_id }}" data-ss-cguid="{{ cd.ss_contact_guid }}" data-cname="{{ cd.contact_name }}" data-field="email" data-ss-val="{{ cd.silvasoft }}" data-hs-val="{{ cd.hubspot }}" data-comp-name="{{ c.name }}" onclick="handleCustomContactFieldClick(this)"
+                  title="Handmatig een nieuw e-mailadres invoeren">
+                  ✏️
+                </button>
+              {% elif cd.type == 'CONTACT_NAME_DIFF' %}
+                <button class="btn-action-arrow btn-to-hs"
+                  data-target="HUBSPOT" data-entity-id="{{ cd.hs_contact_id }}" data-field="name" data-new-val="{{ cd.silvasoft }}" data-old-val="{{ cd.hubspot }}" onclick="handleSyncContactFieldClick(this)"
+                  title="Overschrijf naam in HubSpot met '{{ cd.silvasoft }}'">
+                  ➔
+                </button>
+                <button class="btn-action-arrow btn-to-ss"
+                  data-target="SILVASOFT" data-entity-id="{{ c.customer_number }}" data-field="name" data-new-val="{{ cd.hubspot }}" data-old-val="{{ cd.silvasoft }}" data-cguid="{{ cd.ss_contact_guid }}" onclick="handleSyncContactFieldClick(this)"
+                  title="Plaats naam in de Silvasoft-wachtrij">
+                  ⬅
+                </button>
+                <button class="btn-action-arrow btn-edit-val"
+                  data-cust-no="{{ c.customer_number }}" data-hs-id="{{ c.hubspot_id }}" data-hs-cid="{{ cd.hs_contact_id }}" data-ss-cguid="{{ cd.ss_contact_guid }}" data-cname="{{ cd.contact_name }}" data-field="name" data-ss-val="{{ cd.silvasoft }}" data-hs-val="{{ cd.hubspot }}" data-comp-name="{{ c.name }}" onclick="handleCustomContactFieldClick(this)"
+                  title="Handmatig een nieuwe naam invoeren">
                   ✏️
                 </button>
               {% endif %}

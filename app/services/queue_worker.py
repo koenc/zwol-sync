@@ -177,13 +177,42 @@ class QueueService:
                     hubspot_client.update_contact(entity_id, {"phone": new_val})
                     # Update contact in hubspot cache
                     with get_db() as db:
-                        row = db.fetchone(f"SELECT contacts_json FROM {prefix}hubspot_cache WHERE contacts_json LIKE %s", (f"%{entity_id}%",))
+                        row = db.fetchone(f"SELECT hubspot_id, contacts_json FROM {prefix}hubspot_cache WHERE contacts_json LIKE %s", (f"%{entity_id}%",))
                         if row:
                             cts = json.loads(row["contacts_json"] or "[]")
                             for ct in cts:
                                 if str(ct.get("id")) == str(entity_id):
                                     ct["phone"] = new_val
-                            db.execute(f"UPDATE {prefix}hubspot_cache SET contacts_json = %s WHERE contacts_json LIKE %s", (json.dumps(cts), f"%{entity_id}%"))
+                            db.execute(f"UPDATE {prefix}hubspot_cache SET contacts_json = %s WHERE hubspot_id = %s", (json.dumps(cts), row["hubspot_id"]))
+
+                elif action == "UPDATE_CONTACT_EMAIL":
+                    hubspot_client.update_contact(entity_id, {"email": new_val})
+                    # Update contact in hubspot cache
+                    with get_db() as db:
+                        row = db.fetchone(f"SELECT hubspot_id, contacts_json FROM {prefix}hubspot_cache WHERE contacts_json LIKE %s", (f"%{entity_id}%",))
+                        if row:
+                            cts = json.loads(row["contacts_json"] or "[]")
+                            for ct in cts:
+                                if str(ct.get("id")) == str(entity_id):
+                                    ct["email"] = new_val
+                            db.execute(f"UPDATE {prefix}hubspot_cache SET contacts_json = %s WHERE hubspot_id = %s", (json.dumps(cts), row["hubspot_id"]))
+
+                elif action == "UPDATE_CONTACT_NAME":
+                    parts = (new_val or "").strip().split(" ", 1)
+                    first_name = parts[0] if parts else ""
+                    last_name = parts[1] if len(parts) > 1 else ""
+                    hubspot_client.update_contact(entity_id, {"firstname": first_name, "lastname": last_name})
+                    # Update contact in hubspot cache
+                    with get_db() as db:
+                        row = db.fetchone(f"SELECT hubspot_id, contacts_json FROM {prefix}hubspot_cache WHERE contacts_json LIKE %s", (f"%{entity_id}%",))
+                        if row:
+                            cts = json.loads(row["contacts_json"] or "[]")
+                            for ct in cts:
+                                if str(ct.get("id")) == str(entity_id):
+                                    ct["name"] = (new_val or "").strip()
+                                    ct["first_name"] = first_name
+                                    ct["last_name"] = last_name
+                            db.execute(f"UPDATE {prefix}hubspot_cache SET contacts_json = %s WHERE hubspot_id = %s", (json.dumps(cts), row["hubspot_id"]))
 
 
             elif target == "SILVASOFT":
@@ -248,10 +277,17 @@ class QueueService:
                     phone_val = str(new_val or "")
                     with get_db() as db:
                         ss = db.fetchone(
-                            f"SELECT relation_guid FROM {prefix}silvasoft_cache WHERE customer_number = %s",
+                            f"SELECT relation_guid, contacts_json FROM {prefix}silvasoft_cache WHERE customer_number = %s",
                             (str(entity_id),)
                         )
                     rel_guid = ss.get("relation_guid") if ss else None
+                    if not c_guid and ss and ss.get("contacts_json"):
+                        try:
+                            cts = json.loads(ss.get("contacts_json") or "[]")
+                            if cts and cts[0].get("guid"):
+                                c_guid = cts[0].get("guid")
+                        except Exception:
+                            pass
 
                     ss_payload = {
                         "RelationGUID": int(rel_guid) if rel_guid else None,
@@ -270,7 +306,94 @@ class QueueService:
                             for ct in cts:
                                 if ct.get("guid") == str(c_guid):
                                     ct["phone"] = phone_val
-                            db.execute(f"UPDATE {prefix}silvasoft_cache SET contacts_json = %s WHERE customer_number = %s", (json.dumps(cts), str(entity_id)))
+                            db.execute(
+                                f"UPDATE {prefix}silvasoft_cache SET contacts_json = %s, primary_contact_phone = %s WHERE customer_number = %s",
+                                (json.dumps(cts), phone_val, str(entity_id))
+                            )
+
+                elif action == "UPDATE_CONTACT_EMAIL":
+                    c_guid = payload.get("contact_guid")
+                    email_val = str(new_val or "")
+                    with get_db() as db:
+                        ss = db.fetchone(
+                            f"SELECT relation_guid, contacts_json FROM {prefix}silvasoft_cache WHERE customer_number = %s",
+                            (str(entity_id),)
+                        )
+                    rel_guid = ss.get("relation_guid") if ss else None
+                    if not c_guid and ss and ss.get("contacts_json"):
+                        try:
+                            cts = json.loads(ss.get("contacts_json") or "[]")
+                            if cts and cts[0].get("guid"):
+                                c_guid = cts[0].get("guid")
+                        except Exception:
+                            pass
+
+                    ss_payload = {
+                        "RelationGUID": int(rel_guid) if rel_guid else None,
+                        "Relation_Contact": [
+                            {
+                                "ContactGUID": str(c_guid),
+                                "Email": email_val
+                            }
+                        ]
+                    }
+                    silvasoft_client.update_company(str(entity_id), ss_payload)
+                    with get_db() as db:
+                        row = db.fetchone(f"SELECT contacts_json FROM {prefix}silvasoft_cache WHERE customer_number = %s", (str(entity_id),))
+                        if row:
+                            cts = json.loads(row["contacts_json"] or "[]")
+                            for ct in cts:
+                                if ct.get("guid") == str(c_guid):
+                                    ct["email"] = email_val
+                            db.execute(
+                                f"UPDATE {prefix}silvasoft_cache SET contacts_json = %s, primary_contact_email = %s WHERE customer_number = %s",
+                                (json.dumps(cts), email_val, str(entity_id))
+                            )
+
+                elif action == "UPDATE_CONTACT_NAME":
+                    c_guid = payload.get("contact_guid")
+                    parts = (new_val or "").strip().split(" ", 1)
+                    first_name = parts[0] if parts else ""
+                    last_name = parts[1] if len(parts) > 1 else ""
+
+                    with get_db() as db:
+                        ss = db.fetchone(
+                            f"SELECT relation_guid, contacts_json FROM {prefix}silvasoft_cache WHERE customer_number = %s",
+                            (str(entity_id),)
+                        )
+                    rel_guid = ss.get("relation_guid") if ss else None
+                    if not c_guid and ss and ss.get("contacts_json"):
+                        try:
+                            cts = json.loads(ss.get("contacts_json") or "[]")
+                            if cts and cts[0].get("guid"):
+                                c_guid = cts[0].get("guid")
+                        except Exception:
+                            pass
+
+                    ss_payload = {
+                        "RelationGUID": int(rel_guid) if rel_guid else None,
+                        "Relation_Contact": [
+                            {
+                                "ContactGUID": str(c_guid),
+                                "FirstName": first_name,
+                                "LastName": last_name
+                            }
+                        ]
+                    }
+                    silvasoft_client.update_company(str(entity_id), ss_payload)
+                    with get_db() as db:
+                        row = db.fetchone(f"SELECT contacts_json FROM {prefix}silvasoft_cache WHERE customer_number = %s", (str(entity_id),))
+                        if row:
+                            cts = json.loads(row["contacts_json"] or "[]")
+                            for ct in cts:
+                                if ct.get("guid") == str(c_guid):
+                                    ct["name"] = (new_val or "").strip()
+                                    ct["first_name"] = first_name
+                                    ct["last_name"] = last_name
+                            db.execute(
+                                f"UPDATE {prefix}silvasoft_cache SET contacts_json = %s, primary_contact_name = %s WHERE customer_number = %s",
+                                (json.dumps(cts), (new_val or "").strip(), str(entity_id))
+                            )
 
                 elif action == "ADD_CONTACT":
                     c_name = (payload.get("name") or "").strip()
