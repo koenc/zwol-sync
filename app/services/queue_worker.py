@@ -105,6 +105,24 @@ class QueueService:
                     hs_prop = hs_field_map.get(field, field)
                     hubspot_client.update_company(entity_id, {hs_prop: new_val})
 
+                    # Update ook direct de lokale hubspot_cache voor instant weergave
+                    hs_cache_cols = {
+                        "name": "name",
+                        "kvk_number": "kvk_number",
+                        "street": "street",
+                        "postal_code": "postal_code",
+                        "city": "city",
+                        "phone": "phone",
+                        "website": "website"
+                    }
+                    c_col = hs_cache_cols.get(field)
+                    if c_col:
+                        with get_db() as db:
+                            db.execute(
+                                f"UPDATE {prefix}hubspot_cache SET {c_col} = %s WHERE hubspot_id = %s",
+                                (new_val, str(entity_id))
+                            )
+
                 elif action == "CREATE_COMPANY":
                     # Maak bedrijf aan in HubSpot vanuit Silvasoft gegevens
                     res = hubspot_client.create_company(payload)
@@ -119,6 +137,15 @@ class QueueService:
 
                 elif action == "UPDATE_CONTACT_PHONE":
                     hubspot_client.update_contact(entity_id, {"phone": new_val})
+                    # Update contact in hubspot cache
+                    with get_db() as db:
+                        row = db.fetchone(f"SELECT contacts_json FROM {prefix}hubspot_cache WHERE contacts_json LIKE %s", (f"%{entity_id}%",))
+                        if row:
+                            cts = json.loads(row["contacts_json"] or "[]")
+                            for ct in cts:
+                                if str(ct.get("id")) == str(entity_id):
+                                    ct["phone"] = new_val
+                            db.execute(f"UPDATE {prefix}hubspot_cache SET contacts_json = %s WHERE contacts_json LIKE %s", (json.dumps(cts), f"%{entity_id}%"))
 
 
             elif target == "SILVASOFT":

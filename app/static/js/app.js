@@ -463,3 +463,145 @@ function toggleAllFields(custNo) {
     }
   }
 }
+
+
+// --------------------------------------------------------------------------
+// HANDMATIG WAARDE INVOEREN (MODAL)
+// --------------------------------------------------------------------------
+
+let currentCustomValData = null;
+
+function openCustomValueModal(custNo, hsId, field, label, ssVal, hsVal, companyName) {
+  currentCustomValData = {
+    isContactPhone: false,
+    custNo: custNo,
+    hsId: hsId,
+    field: field,
+    label: label,
+    ssVal: ssVal,
+    hsVal: hsVal,
+    companyName: companyName
+  };
+
+  document.getElementById('custom-val-title').innerText = `${label} aanpassen`;
+  document.getElementById('custom-val-subtitle').innerText = `${companyName || 'Bedrijf'} (#${custNo} • HS #${hsId})`;
+  document.getElementById('custom-val-curr-ss').innerText = ssVal || '(leeg)';
+  document.getElementById('custom-val-curr-hs').innerText = hsVal || '(leeg)';
+  
+  const input = document.getElementById('custom-val-input');
+  input.value = (ssVal !== '(leeg)' ? ssVal : (hsVal !== '(leeg)' ? hsVal : ''));
+  
+  const modal = document.getElementById('custom-val-modal');
+  modal.style.display = 'flex';
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 50);
+}
+
+function openCustomContactPhoneModal(custNo, hsId, hsContactId, ssContactGuid, contactName, ssVal, hsVal, companyName) {
+  currentCustomValData = {
+    isContactPhone: true,
+    custNo: custNo,
+    hsId: hsId,
+    hsContactId: hsContactId,
+    ssContactGuid: ssContactGuid,
+    field: 'phone',
+    label: `Telefoon: ${contactName}`,
+    ssVal: ssVal,
+    hsVal: hsVal,
+    companyName: companyName
+  };
+
+  document.getElementById('custom-val-title').innerText = `Telefoonnummer aanpassen: ${contactName}`;
+  document.getElementById('custom-val-subtitle').innerText = `${companyName || 'Bedrijf'} (#${custNo})`;
+  document.getElementById('custom-val-curr-ss').innerText = ssVal || '(leeg)';
+  document.getElementById('custom-val-curr-hs').innerText = hsVal || '(leeg)';
+
+  const input = document.getElementById('custom-val-input');
+  input.value = (ssVal !== '(leeg)' ? ssVal : (hsVal !== '(leeg)' ? hsVal : ''));
+
+  const modal = document.getElementById('custom-val-modal');
+  modal.style.display = 'flex';
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 50);
+}
+
+function closeCustomValueModal() {
+  const modal = document.getElementById('custom-val-modal');
+  if (modal) modal.style.display = 'none';
+  currentCustomValData = null;
+}
+
+async function submitCustomValue(target) {
+  if (!currentCustomValData) return;
+  const input = document.getElementById('custom-val-input');
+  const newVal = (input.value || '').trim();
+
+  if (!newVal) {
+    if (!confirm('Weet je zeker dat je dit veld leeg wilt maken?')) return;
+  }
+
+  const { isContactPhone, custNo, hsId, hsContactId, ssContactGuid, field, label } = currentCustomValData;
+
+  showToast('Waarde wordt opgeslagen...', 'info');
+
+  try {
+    if (target === 'BOTH' || target === 'HUBSPOT') {
+      const hsRes = await fetch('/api/queue/apply-field', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'HUBSPOT',
+          action: isContactPhone ? 'UPDATE_CONTACT_PHONE' : 'UPDATE_FIELD',
+          entity_id: isContactPhone ? hsContactId : hsId,
+          field_name: field,
+          new_value: newVal,
+          old_value: currentCustomValData.hsVal
+        })
+      });
+      const hsData = await hsRes.json();
+      if (!hsData.success) {
+        showToast(`Fout bij HubSpot update: ${hsData.error}`, 'error');
+        return;
+      }
+    }
+
+    if (target === 'BOTH' || target === 'SILVASOFT') {
+      const ssPayload = isContactPhone ? { contact_guid: ssContactGuid } : {};
+      const ssRes = await fetch('/api/queue/apply-field', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'SILVASOFT',
+          action: isContactPhone ? 'UPDATE_CONTACT_PHONE' : 'UPDATE_FIELD',
+          entity_id: custNo,
+          field_name: field,
+          new_value: newVal,
+          old_value: currentCustomValData.ssVal,
+          payload: ssPayload
+        })
+      });
+      const ssData = await ssRes.json();
+      if (!ssData.success) {
+        showToast(`Fout bij Silvasoft update: ${ssData.error}`, 'error');
+        return;
+      }
+    }
+
+    closeCustomValueModal();
+    if (target === 'BOTH') {
+      showToast(`'${label}' opgeslagen in HubSpot en ingepland voor Silvasoft!`, 'success');
+    } else if (target === 'HUBSPOT') {
+      showToast(`'${label}' direct bijgewerkt in HubSpot!`, 'success');
+    } else {
+      showToast(`'${label}' ingepland voor Silvasoft!`, 'success');
+    }
+
+    setTimeout(() => location.reload(), 700);
+  } catch (err) {
+    showToast(`Fout: ${err.message}`, 'error');
+  }
+}

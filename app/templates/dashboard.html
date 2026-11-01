@@ -155,6 +155,11 @@
                 title="Plaats in Silvasoft-wachtrij met '{{ d.hubspot }}'">
                 ⬅
               </button>
+              <button class="btn-action-arrow btn-edit-val"
+                onclick="openCustomValueModal('{{ c.customer_number }}', '{{ c.hubspot_id }}', '{{ d.field }}', '{{ d.label|escape }}', '{{ d.silvasoft|escape }}', '{{ d.hubspot|escape }}', '{{ c.name|escape }}')"
+                title="Handmatig een nieuwe waarde invoeren">
+                ✏️
+              </button>
             </td>
             <td class="diff-val-hs">
               {% if d.field == 'website' and d.hubspot != '(leeg)' %}
@@ -233,6 +238,11 @@
                   onclick="syncContactPhone('SILVASOFT', '{{ c.customer_number }}', '{{ cd.hubspot|escape }}', '{{ cd.silvasoft|escape }}', '{{ cd.ss_contact_guid }}')"
                   title="Plaats telefoonnummer in de Silvasoft-wachtrij">
                   ⬅
+                </button>
+                <button class="btn-action-arrow btn-edit-val"
+                  onclick="openCustomContactPhoneModal('{{ c.customer_number }}', '{{ c.hubspot_id }}', '{{ cd.hs_contact_id }}', '{{ cd.ss_contact_guid }}', '{{ cd.contact_name|escape }}', '{{ cd.silvasoft|escape }}', '{{ cd.hubspot|escape }}', '{{ c.name|escape }}')"
+                  title="Handmatig een nieuw telefoonnummer invoeren">
+                  ✏️
                 </button>
               {% endif %}
             </td>
@@ -352,6 +362,53 @@
 
   </div>
   {% endfor %}
+</div>
+
+<!-- Modal voor Handmatige Waarde Invoeren -->
+<div id="custom-val-modal" class="modal">
+  <div class="modal-content" style="max-width: 480px;">
+    <div class="modal-header">
+      <h3 style="margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+        ✏️ <span id="custom-val-title">Nieuwe waarde invoeren</span>
+      </h3>
+      <span class="modal-close" onclick="closeCustomValueModal()">&times;</span>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom: 12px; font-size: 0.88rem; color: #64748b;">
+        <span id="custom-val-subtitle"></span>
+      </div>
+
+      <div style="background: #f8fafc; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.85rem; border: 1px solid #e2e8f0;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span style="color: #92400e; font-weight: 500;">📦 Silvasoft:</span>
+          <strong id="custom-val-curr-ss" style="color: #1e293b;"></strong>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #c2410c; font-weight: 500;">🟠 HubSpot:</span>
+          <strong id="custom-val-curr-hs" style="color: #1e293b;"></strong>
+        </div>
+      </div>
+
+      <label style="font-weight: 600; font-size: 0.88rem; color: #334155;">
+        Juiste / nieuwe waarde:
+      </label>
+      <input type="text" id="custom-val-input" class="form-control" placeholder="Typ de juiste waarde..." style="margin-top: 6px; margin-bottom: 18px;" onkeydown="if(event.key === 'Enter') submitCustomValue('BOTH')">
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button class="btn btn-primary" onclick="submitCustomValue('BOTH')" style="width: 100%; justify-content: center; padding: 10px; font-weight: 600;">
+          ↔ Naar Beide Systemen (Aanbevolen)
+        </button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-outline" onclick="submitCustomValue('HUBSPOT')" style="flex: 1; justify-content: center;">
+            ➔ Alleen HubSpot
+          </button>
+          <button class="btn btn-outline" onclick="submitCustomValue('SILVASOFT')" style="flex: 1; justify-content: center;">
+            ⬅ Alleen Silvasoft
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Modal voor Handmatig Koppelen -->

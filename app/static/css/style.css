@@ -362,6 +362,12 @@ body {
   border-color: var(--color-silvasoft);
 }
 
+.btn-edit-val:hover {
+  background: #0284c7;
+  color: #fff;
+  border-color: #0284c7;
+}
+
 .single-overview-grid {
   padding: 16px 20px;
   display: grid;
