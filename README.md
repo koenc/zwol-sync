@@ -71,8 +71,35 @@ Vul de inloggegevens in:
 
 ### 3. Container starten
 ```bash
-docker-compose up -d --build
+sudo docker-compose up -d --build
 ```
 De applicatie draait vervolgens op:
-`http://<NAS-IP>:8505` (of via je Cloudflare tunnel op bijv. `sync.brouwerijzwol.nl`).
+`http://<NAS-IP>:8505` (of via Cloudflare tunnel op `sync.brouwerijzwol.nl`).
+
+---
+
+## 🔒 Cloudflare Tunnel: sync.brouwerijzwol.nl
+
+Omdat de NAS al de bestaande Cloudflare tunnel (`synology-ketelhuis`) draait via `network_mode: "host"`, hoef je geen aparte tunnel-container te starten!
+
+### 1. Public Hostname toevoegen in Cloudflare Zero Trust:
+1. Open het Cloudflare Zero Trust Dashboard: [https://one.dash.cloudflare.com](https://one.dash.cloudflare.com)
+2. Navigeer naar **Networks** > **Tunnels** en klik op je actieve tunnel (bijv. `synology-ketelhuis`) > **Configure**.
+3. Ga naar het tabblad **Public Hostname** en klik op **Add a public hostname**.
+4. Vul in:
+   * **Subdomain:** `sync`
+   * **Domain:** `brouwerijzwol.nl`
+   * **Path:** *(leeg laten)*
+   * **Type:** `HTTP`
+   * **URL:** `localhost:8505` (of `127.0.0.1:8505`)
+5. Klik rechtsonder op **Save hostname**. Cloudflare maakt het DNS CNAME-record automatisch aan.
+
+### 2. Beveiliging via Cloudflare Access (Aanbevolen):
+Net als bij `orders.brouwerijzwol.nl` kun je de sync-app afschermen zodat alleen teamleden erbij kunnen:
+1. Ga naar **Access** > **Applications** > **Add an application** > **Self-hosted**.
+2. **Application name:** `ZWOL Sync`
+3. **Application domain:** `sync.brouwerijzwol.nl`
+4. **Policy:** Voeg een regel toe (`Action: Allow`) met selector `Emails ending in: @brouwerijzwol.nl` (of Microsoft 365 login).
+5. Opslaan. Nu vraagt Cloudflare eerst een login voordat iemand de webapplicatie kan openen.
+
 
