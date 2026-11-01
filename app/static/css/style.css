@@ -807,3 +807,54 @@ body {
   background: #ffffff;
   color: var(--text-main);
 }
+
+/* Inline editable type styling */
+.type-badge-wrapper {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+}
+
+.badge-editable {
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.badge-editable:hover {
+  filter: brightness(0.95);
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.4);
+  transform: translateY(-1px);
+}
+
+.badge-editable .edit-icon {
+  font-size: 0.72rem;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.badge-editable:hover .edit-icon {
+  opacity: 1;
+}
+
+.type-inline-select {
+  padding: 4px 8px;
+  border: 2px solid var(--color-primary);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  background: #ffffff;
+  color: var(--text-main);
+  box-shadow: var(--shadow-md);
+  outline: none;
+  font-family: inherit;
+  cursor: pointer;
+  animation: fadeIn 0.15s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}

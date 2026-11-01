@@ -65,6 +65,24 @@ COMPANY_TYPE_LABELS = {
     "Vereniging": "Vereniging"
 }
 
+COMPANY_TYPE_OPTIONS = [
+    {"value": "RESTAURANT", "label": "Horeca - Restaurant"},
+    {"value": "CAFÉ", "label": "Horeca - Café"},
+    {"value": "STRANDTENT", "label": "Horeca - Strandtent"},
+    {"value": "SPORTKANTINE", "label": "Horeca - Sportkantine"},
+    {"value": "Horeca - Overig", "label": "Horeca - Overig"},
+    {"value": "Retail - Slijterij", "label": "Retail - Slijterij"},
+    {"value": "Retail - Geschenkwinkel", "label": "Retail - Geschenkwinkel"},
+    {"value": "Retail - Supermarkt", "label": "Retail - Supermarkt"},
+    {"value": "E-TAIL", "label": "E-tail"},
+    {"value": "GESCHENKBUSINESS", "label": "D2B - Geschenkbusiness"},
+    {"value": "OTHER", "label": "D2B - Overig"},
+    {"value": "D2C", "label": "D2C"},
+    {"value": "BROUWERIJ", "label": "Brouwerij"},
+    {"value": "Leverancier", "label": "Leverancier"},
+    {"value": "Vereniging", "label": "Vereniging"}
+]
+
 
 @app.route("/newsletter")
 def page_newsletter():
@@ -138,7 +156,8 @@ def page_newsletter():
         "newsletter.html",
         contacts=all_contacts,
         stats=stats,
-        company_types=sorted(type_counts.keys())
+        company_types=sorted(type_counts.keys()),
+        type_options=COMPANY_TYPE_OPTIONS
     )
 
 
@@ -397,6 +416,54 @@ def api_search_hubspot():
                 ORDER BY name ASC LIMIT 20
             """, (term, term, term))
     return jsonify({"success": True, "results": rows})
+
+
+@app.route("/api/companies/update-type", methods=["POST"])
+def api_update_company_type():
+    """Werkt het bedrijfstype van een bedrijf direct bij in HubSpot en de lokale cache."""
+    data = request.get_json() or {}
+    company_id = str(data.get("company_id") or "").strip()
+    new_type = str(data.get("type") or "").strip()
+
+    if not company_id:
+        return jsonify({"success": False, "error": "Bedrijf-ID is verplicht."}), 400
+
+    try:
+        # 1. Update in HubSpot
+        hubspot_client.update_company(company_id, {"type": new_type})
+
+        # 2. Update lokale cache
+        prefix = Config.DB_TABLE_PREFIX
+        company_name = ""
+        with get_db() as db:
+            row = db.fetchone(f"SELECT name FROM {prefix}hubspot_cache WHERE hubspot_id = %s", (company_id,))
+            if row:
+                company_name = row.get("name") or ""
+            db.execute(
+                f"UPDATE {prefix}hubspot_cache SET company_type = %s WHERE hubspot_id = %s",
+                (new_type, company_id)
+            )
+
+        # 3. Log in geschiedenis
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        type_label = COMPANY_TYPE_LABELS.get(new_type, new_type) if new_type else "Geen type"
+        with get_db() as db:
+            db.execute(f"""
+                INSERT INTO {prefix}history (entity_name, target_system, change_summary, created_at)
+                VALUES (%s, %s, %s, %s)
+            """, (company_name or f"Bedrijf #{company_id}", "HUBSPOT", f"Bedrijfstype gewijzigd naar '{type_label}'", now_str))
+
+        return jsonify({
+            "success": True,
+            "company_id": company_id,
+            "type": new_type,
+            "type_label": type_label,
+            "has_type": bool(new_type),
+            "message": f"Bedrijfstype van '{company_name}' succesvol aangepast naar '{type_label}'!"
+        })
+    except Exception as e:
+        logger.error(f"Fout bij bijwerken bedrijfstype #{company_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/newsletter/subscribe", methods=["POST"])
