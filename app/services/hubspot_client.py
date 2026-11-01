@@ -72,6 +72,53 @@ class HubSpotClient:
             return response
         return response
 
+    def _handle_error(self, resp: requests.Response):
+        """Formatteert HubSpot API fouten naar duidelijke, gebruiksvriendelijke meldingen."""
+        if resp.status_code < 400:
+            return
+
+        try:
+            data = resp.json()
+            msg = data.get("message") or ""
+
+            # Check voor uniekheidsconflict op e-mail:
+            # "Cannot set ... propertyName=email, value=xyz} on 123. 456 already has that value."
+            import re
+            m = re.search(r'propertyName=email,\s*value=([^}]+)\}\s+on\s+(\d+)\.\s+(\d+)\s+already has that value', msg)
+            if m:
+                val, target_id, existing_id = m.group(1), m.group(2), m.group(3)
+                prefix = Config.DB_TABLE_PREFIX
+                existing_name = f"contact #{existing_id}"
+                try:
+                    with get_db() as db:
+                        row = db.fetchone(
+                            f"SELECT contacts_json FROM {prefix}hubspot_cache WHERE contacts_json LIKE %s",
+                            (f"%{existing_id}%",)
+                        )
+                        if row:
+                            cts = json.loads(row["contacts_json"] or "[]")
+                            for c in cts:
+                                if str(c.get("id")) == str(existing_id):
+                                    existing_name = f"'{c.get('name')}' (#{existing_id})"
+                                    break
+                except Exception:
+                    pass
+
+                raise RuntimeError(
+                    f"E-mailadres '{val}' is in HubSpot al in gebruik door {existing_name}. "
+                    f"In HubSpot kan een e-mailadres maar aan één contactpersoon gekoppeld zijn. "
+                    f"Pas eerst het e-mailadres van {existing_name} aan in HubSpot of gebruik de pijl naar Silvasoft."
+                )
+
+            if msg:
+                raise RuntimeError(f"HubSpot fout ({resp.status_code}): {msg}")
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
+
+        resp.raise_for_status()
+
     def test_connection(self) -> Dict[str, Any]:
         """Controleert of het HubSpot token geldig is."""
         if not self.access_token:
@@ -423,7 +470,7 @@ class HubSpotClient:
         """Werkt eigenschappen van een bedrijf bij in HubSpot."""
         url = f"{self.BASE_URL}/crm/v3/objects/companies/{hubspot_id}"
         resp = self._request_with_retry("PATCH", url, json={"properties": properties})
-        resp.raise_for_status()
+        self._handle_error(resp)
         return resp.json()
 
     def create_company(self, properties: Dict[str, str]) -> Dict[str, Any]:
@@ -431,7 +478,7 @@ class HubSpotClient:
         url = f"{self.BASE_URL}/crm/v3/objects/companies"
         clean_props = {k: str(v).strip() for k, v in properties.items() if v is not None and str(v).strip() != ""}
         resp = self._request_with_retry("POST", url, json={"properties": clean_props})
-        resp.raise_for_status()
+        self._handle_error(resp)
         return resp.json()
 
     def create_and_associate_contact(self, company_id: str, contact_data: Dict[str, str]) -> Dict[str, Any]:
@@ -490,18 +537,18 @@ class HubSpotClient:
             if existing_id:
                 assoc_url = f"{self.BASE_URL}/crm/v3/objects/contacts/{existing_id}/associations/companies/{company_id}/contact_to_company"
                 assoc_resp = self._request_with_retry("PUT", assoc_url)
-                assoc_resp.raise_for_status()
+                self._handle_error(assoc_resp)
                 logger.info(f"✅ Bestaand contact #{existing_id} succesvol gekoppeld aan HubSpot bedrijf #{company_id}")
                 return {"id": existing_id, "associated": True}
 
-        resp.raise_for_status()
+        self._handle_error(resp)
         return resp.json()
 
     def update_contact(self, contact_id: str, properties: Dict[str, str]) -> Dict[str, Any]:
         """Werkt eigenschappen van een contactpersoon bij in HubSpot."""
         url = f"{self.BASE_URL}/crm/v3/objects/contacts/{contact_id}"
         resp = self._request_with_retry("PATCH", url, json={"properties": properties})
-        resp.raise_for_status()
+        self._handle_error(resp)
         return resp.json()
 
     def subscribe_contact(self, email: str, legal_basis: str = "LEGITIMATE_INTEREST_CLIENT", explanation: str = "Ingeschreven via ZWOL Sync") -> Dict[str, Any]:
@@ -518,7 +565,7 @@ class HubSpotClient:
             "explanation": explanation
         }
         resp = self._request_with_retry("POST", url, json=payload)
-        resp.raise_for_status()
+        self._handle_error(resp)
         res_data = resp.json() if resp.text else {"status": "ok"}
         logger.info(f"✅ Contact '{email_clean}' succesvol ingeschreven voor nieuwsbrief (123809007).")
         return res_data

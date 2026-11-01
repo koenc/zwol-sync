@@ -64,10 +64,7 @@ class QueueService:
 
         # Als het een HubSpot taak is, voer direct synchroon uit voor instant feedback
         if target == "HUBSPOT":
-            try:
-                QueueService.process_task(task_id)
-            except Exception as e:
-                logger.warning(f"Directe uitvoering van HubSpot taak {task_id} mislukt: {e}")
+            QueueService.process_task(task_id)
 
         return task_id
 
