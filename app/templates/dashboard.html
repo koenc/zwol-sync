@@ -67,7 +67,20 @@
     <!-- Card Header -->
     <div class="card-header">
       <div class="card-title-group">
-        <span class="badge {{ c.status_badge }}">{{ c.status_label }}</span>
+        {% if c.status == 'IN_SYNC' %}
+        <span class="badge badge-success">VOLLEDIG SYNCHROON</span>
+      {% elif c.status == 'PENDING_SYNC' %}
+        <span class="badge" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-weight: 600;">
+          ⏳ {{ c.pending_count }} IN WACHTRIJ
+        </span>
+      {% else %}
+        <span class="badge badge-danger">{{ c.diffs|length + c.contacts_diff|length }} VERSCHILLEN</span>
+        {% if c.pending_count > 0 %}
+          <span class="badge" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-size: 11px; margin-left: 4px;">
+            ⏳ {{ c.pending_count }} in wachtrij
+          </span>
+        {% endif %}
+      {% endif %}
         <h2 class="company-title">{{ c.name }}</h2>
         <span class="company-meta">Klantnummer: <strong>#{{ c.customer_number }}</strong></span>
         {% if c.hubspot_id %}
@@ -91,7 +104,7 @@
           onclick="openManualMatch('{{ c.customer_number }}', '{{ c.name|escape }}')">
           🔗 Handmatig Koppelen
         </button>
-        {% elif c.status == 'DIFF_FOUND' or c.status == 'IN_SYNC' %}
+        {% elif c.status == 'DIFF_FOUND' or c.status == 'IN_SYNC' or c.status == 'PENDING_SYNC' %}
         {% if c.identical_count > 0 %}
         <button class="btn btn-outline btn-sm" id="btn-toggle-fields-{{ c.customer_number }}"
           onclick="toggleAllFields('{{ c.customer_number }}')"
@@ -311,6 +324,49 @@
           </tr>
           {% endfor %}
 
+          <!-- Pending Wachtrij Velden -->
+          {% for pf in c.pending_fields %}
+          <tr class="diff-row row-identical row-identical-{{ c.customer_number }}" style="display: none; background: #f0f9ff;">
+            <td class="diff-field-name" style="color: #0369a1;">
+              <span style="margin-right: 4px;">⏳</span> {{ pf.label }}
+            </td>
+            <td class="diff-val-ss" style="color: #0c4a6e;">
+              {{ pf.silvasoft }}
+            </td>
+            <td class="diff-actions" style="text-align: center;">
+              <span class="badge" style="background: #bae6fd; color: #0369a1; font-size: 11px; padding: 2px 6px;" title="Taak #{{ pf.task_id }} gepland om {{ pf.scheduled_at }}">
+                In wachtrij ({{ pf.scheduled_at }})
+              </span>
+            </td>
+            <td class="diff-val-hs" style="color: #0c4a6e;">
+              {{ pf.hubspot }}
+              {% if pf.new_value and pf.new_value != pf.silvasoft and pf.new_value != pf.hubspot %}
+                <br><small style="color: #0284c7;">➔ Wordt: {{ pf.new_value }}</small>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+
+          <!-- Pending Wachtrij Contacten -->
+          {% for pc in c.pending_contacts %}
+          <tr class="diff-row row-identical row-identical-{{ c.customer_number }}" style="display: none; background: #f0f9ff;">
+            <td class="diff-field-name" style="color: #0369a1;">
+              <span style="margin-right: 4px;">⏳</span> {{ pc.label }}
+            </td>
+            <td class="diff-val-ss" style="color: #0c4a6e;">
+              {{ pc.silvasoft }}
+            </td>
+            <td class="diff-actions" style="text-align: center;">
+              <span class="badge" style="background: #bae6fd; color: #0369a1; font-size: 11px; padding: 2px 6px;" title="Gepland om {{ pc.scheduled_at }}">
+                In wachtrij ({{ pc.scheduled_at }})
+              </span>
+            </td>
+            <td class="diff-val-hs" style="color: #0c4a6e;">
+              {{ pc.hubspot }}
+            </td>
+          </tr>
+          {% endfor %}
+
           <!-- Genegeerde Contactpersonen (indien uitgesloten) -->
           {% for ig in c.ignored_contacts %}
           <tr class="diff-row row-identical row-identical-{{ c.customer_number }}" style="display: none; background: #fff1f2; opacity: 0.95;">
@@ -337,11 +393,19 @@
           {% endfor %}
 
           {% if not c.diffs and not c.contacts_diff %}
-          <tr>
-            <td colspan="4" class="text-center text-success" style="padding: 16px;">
-              ✅ Alle gegevens en contactpersonen zijn 100% identiek.
-            </td>
-          </tr>
+            {% if c.pending_count > 0 %}
+            <tr>
+              <td colspan="4" class="text-center" style="padding: 16px; background: #f0f9ff; color: #0369a1; font-size: 0.92rem;">
+                ⏳ <strong>Alle {{ c.pending_count }} wijzigingen staan al in de wachtrij</strong> en worden automatisch verwerkt.
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4" class="text-center text-success" style="padding: 16px;">
+                ✅ Alle gegevens en contactpersonen zijn 100% identiek.
+              </td>
+            </tr>
+            {% endif %}
           {% endif %}
         </tbody>
       </table>

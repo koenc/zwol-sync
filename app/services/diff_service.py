@@ -1,6 +1,7 @@
 import re
 import json
 import logging
+import datetime
 from typing import List, Dict, Any, Optional
 from app.config import Config
 from app.database import get_db
@@ -11,22 +12,24 @@ logger = logging.getLogger("zwol_sync")
 def clean_phone(val: str) -> str:
     if not val:
         return ""
-    p = re.sub(r"[^\d+]", "", val)
-    if p.startswith("+31"):
-        p = "0" + p[3:]
-    elif p.startswith("0031"):
-        p = "0" + p[4:]
-    return p
+    digits = re.sub(r"[^0-9]", "", val)
+    if digits.startswith("0031"):
+        digits = "31" + digits[4:]
+    elif digits.startswith("0") and len(digits) == 10:
+        digits = "31" + digits[1:]
+    return digits
 
 
 def clean_zip(val: str) -> str:
     if not val:
         return ""
-    return re.sub(r"\s+", "", val).upper()
+    return re.sub(r"[^A-Za-z0-9]", "", val).upper()
 
 
-def clean_str(val: str) -> str:
-    return (val or "").strip()
+def clean_str(val: Any) -> str:
+    if val is None:
+        return ""
+    return str(val).strip()
 
 
 class DiffService:
@@ -42,11 +45,26 @@ class DiffService:
             hs_rows = db.fetchall(f"SELECT * FROM {prefix}hubspot_cache")
             matches = db.fetchall(f"SELECT * FROM {prefix}matches")
             ignored_rows = db.fetchall(f"SELECT customer_number, contact_id FROM {prefix}ignored_contacts")
+            pending_rows = db.fetchall(f"""
+                SELECT id, target, action, entity_id, field_name, new_value, scheduled_at, payload_json
+                FROM {prefix}queue
+                WHERE status = 'PENDING'
+            """)
 
         ignored_set = {(str(r["customer_number"]), str(r["contact_id"])) for r in ignored_rows}
-
         hs_by_id = {str(h["hubspot_id"]): h for h in hs_rows}
         match_by_ss = {str(m["silvasoft_customer_number"]): str(m["hubspot_id"]) for m in matches}
+
+        # Indexeer pending wachtrijtaken op (entity_id, field/action)
+        pending_by_entity_field = {}
+        for pr in pending_rows:
+            ent = str(pr.get("entity_id") or "")
+            fld = str(pr.get("field_name") or "")
+            act = str(pr.get("action") or "")
+            if fld:
+                pending_by_entity_field[(ent, fld)] = pr
+            if act:
+                pending_by_entity_field[(ent, act)] = pr
 
         companies_list = []
         stats = {
@@ -75,49 +93,62 @@ class DiffService:
                         "silvasoft": ss,
                         "hubspot": None,
                         "diffs": [],
-                        "contacts_diff": []
+                        "contacts_diff": [],
+                        "identical_fields": [],
+                        "identical_contacts": [],
+                        "ignored_contacts": [],
+                        "pending_fields": [],
+                        "pending_contacts": [],
+                        "pending_count": 0,
+                        "identical_count": 0
                     })
                 continue
 
             # Case 2: Gekoppeld aan HubSpot bedrijf -> Verschillen berekenen
             diffs = []
             identical_fields = []
+            pending_fields = []
+
+            def check_field_diff(field_name, field_label, ss_val, hs_val, is_equal):
+                if not is_equal:
+                    p_task = pending_by_entity_field.get((cust_no, field_name)) or pending_by_entity_field.get((hs_id, field_name))
+                    if p_task:
+                        sched_dt = p_task.get("scheduled_at")
+                        sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                        pending_fields.append({
+                            "field": field_name,
+                            "label": field_label,
+                            "silvasoft": ss_val or "(leeg)",
+                            "hubspot": hs_val or "(leeg)",
+                            "target": p_task.get("target"),
+                            "new_value": p_task.get("new_value") or "",
+                            "scheduled_at": sched_str,
+                            "task_id": p_task.get("id")
+                        })
+                    else:
+                        diffs.append({
+                            "field": field_name,
+                            "label": field_label,
+                            "silvasoft": ss_val or "(leeg)",
+                            "hubspot": hs_val or "(leeg)"
+                        })
+                else:
+                    identical_fields.append({
+                        "field": field_name,
+                        "label": field_label,
+                        "silvasoft": ss_val or "(leeg)",
+                        "hubspot": hs_val or "(leeg)"
+                    })
 
             # 1. Bedrijfsnaam
             ss_name = clean_str(ss.get("name"))
             hs_name = clean_str(hs.get("name"))
-            if ss_name.lower() != hs_name.lower():
-                diffs.append({
-                    "field": "name",
-                    "label": "Bedrijfsnaam",
-                    "silvasoft": ss_name,
-                    "hubspot": hs_name
-                })
-            else:
-                identical_fields.append({
-                    "field": "name",
-                    "label": "Bedrijfsnaam",
-                    "silvasoft": ss_name,
-                    "hubspot": hs_name
-                })
+            check_field_diff("name", "Bedrijfsnaam", ss_name, hs_name, ss_name.lower() == hs_name.lower())
 
             # 2. KvK
             ss_kvk = clean_str(ss.get("kvk_number"))
             hs_kvk = clean_str(hs.get("kvk_number"))
-            if ss_kvk != hs_kvk and (ss_kvk or hs_kvk):
-                diffs.append({
-                    "field": "kvk_number",
-                    "label": "KvK-nummer",
-                    "silvasoft": ss_kvk or "(leeg)",
-                    "hubspot": hs_kvk or "(leeg)"
-                })
-            else:
-                identical_fields.append({
-                    "field": "kvk_number",
-                    "label": "KvK-nummer",
-                    "silvasoft": ss_kvk or "(leeg)",
-                    "hubspot": hs_kvk or "(leeg)"
-                })
+            check_field_diff("kvk_number", "KvK-nummer", ss_kvk, hs_kvk, ss_kvk == hs_kvk or (not ss_kvk and not hs_kvk))
 
             # 3. Straat & Huisnummer
             ss_street = clean_str(ss.get("street"))
@@ -125,114 +156,67 @@ class DiffService:
                 ss_street = f"{ss_street} {clean_str(ss.get('unit'))}".strip()
             if ss.get("unit_appendix"):
                 ss_street = f"{ss_street}{clean_str(ss.get('unit_appendix'))}".strip()
-
             hs_street = clean_str(hs.get("street"))
-            if ss_street.lower() != hs_street.lower() and (ss_street or hs_street):
-                diffs.append({
-                    "field": "street",
-                    "label": "Straat & Huisnummer",
-                    "silvasoft": ss_street or "(leeg)",
-                    "hubspot": hs_street or "(leeg)"
-                })
-            else:
-                identical_fields.append({
-                    "field": "street",
-                    "label": "Straat & Huisnummer",
-                    "silvasoft": ss_street or "(leeg)",
-                    "hubspot": hs_street or "(leeg)"
-                })
+            check_field_diff("street", "Straat & Huisnummer", ss_street, hs_street, ss_street.lower() == hs_street.lower() or (not ss_street and not hs_street))
 
             # 4. Postcode
             ss_zip = clean_zip(ss.get("postal_code"))
             hs_zip = clean_zip(hs.get("postal_code"))
-            if ss_zip != hs_zip and (ss_zip or hs_zip):
-                diffs.append({
-                    "field": "postal_code",
-                    "label": "Postcode",
-                    "silvasoft": ss.get("postal_code") or "(leeg)",
-                    "hubspot": hs.get("postal_code") or "(leeg)"
-                })
-            else:
-                identical_fields.append({
-                    "field": "postal_code",
-                    "label": "Postcode",
-                    "silvasoft": ss.get("postal_code") or "(leeg)",
-                    "hubspot": hs.get("postal_code") or "(leeg)"
-                })
+            check_field_diff("postal_code", "Postcode", ss.get("postal_code"), hs.get("postal_code"), ss_zip == hs_zip or (not ss_zip and not hs_zip))
 
             # 5. Plaats
             ss_city = clean_str(ss.get("city"))
             hs_city = clean_str(hs.get("city"))
-            if ss_city.lower() != hs_city.lower() and (ss_city or hs_city):
-                diffs.append({
-                    "field": "city",
-                    "label": "Plaats",
-                    "silvasoft": ss_city or "(leeg)",
-                    "hubspot": hs_city or "(leeg)"
-                })
-            else:
-                identical_fields.append({
-                    "field": "city",
-                    "label": "Plaats",
-                    "silvasoft": ss_city or "(leeg)",
-                    "hubspot": hs_city or "(leeg)"
-                })
+            check_field_diff("city", "Plaats", ss_city, hs_city, ss_city.lower() == hs_city.lower() or (not ss_city and not hs_city))
 
             # 6. Telefoon
             ss_ph = clean_phone(ss.get("phone"))
             hs_ph = clean_phone(hs.get("phone"))
-            if ss_ph != hs_ph and (ss_ph or hs_ph):
-                diffs.append({
-                    "field": "phone",
-                    "label": "Telefoonnummer",
-                    "silvasoft": ss.get("phone") or "(leeg)",
-                    "hubspot": hs.get("phone") or "(leeg)"
-                })
-            else:
-                identical_fields.append({
-                    "field": "phone",
-                    "label": "Telefoonnummer",
-                    "silvasoft": ss.get("phone") or "(leeg)",
-                    "hubspot": hs.get("phone") or "(leeg)"
-                })
+            check_field_diff("phone", "Telefoonnummer", ss.get("phone"), hs.get("phone"), ss_ph == hs_ph or (not ss_ph and not hs_ph))
 
             # 7. Website
             ss_web = clean_str(ss.get("website")).lower()
             hs_web = clean_str(hs.get("website") or hs.get("domain")).lower()
-            if ss_web != hs_web and (ss_web or hs_web):
-                diffs.append({
-                    "field": "website",
-                    "label": "Website",
-                    "silvasoft": ss.get("website") or "(leeg)",
-                    "hubspot": hs.get("website") or hs.get("domain") or "(leeg)"
-                })
-            else:
-                identical_fields.append({
-                    "field": "website",
-                    "label": "Website",
-                    "silvasoft": ss.get("website") or "(leeg)",
-                    "hubspot": hs.get("website") or hs.get("domain") or "(leeg)"
-                })
+            check_field_diff("website", "Website", ss.get("website"), hs.get("website") or hs.get("domain"), ss_web == hs_web or (not ss_web and not hs_web))
 
             # Contactpersonen vergelijken
             ss_contacts = json.loads(ss.get("contacts_json") or "[]")
             hs_contacts = json.loads(hs.get("contacts_json") or "[]")
-            contacts_diff, identical_contacts, ignored_contacts = self._compare_contacts(ss_contacts, hs_contacts, cust_no, ignored_set)
+            contacts_diff, identical_contacts, ignored_contacts, pending_contacts = self._compare_contacts(
+                ss_contacts, hs_contacts, cust_no, hs_id, ignored_set, pending_by_entity_field
+            )
 
-            is_in_sync = (len(diffs) == 0 and len(contacts_diff) == 0)
+            diff_count = len(diffs) + len(contacts_diff)
+            pending_count = len(pending_fields) + len(pending_contacts)
+            identical_count = len(identical_fields) + len(identical_contacts) + len(ignored_contacts) + pending_count
 
-            if is_in_sync:
+            if diff_count == 0 and pending_count == 0:
                 stats["in_sync"] += 1
                 status = "IN_SYNC"
                 status_label = "Volledig synchroon"
                 status_badge = "badge-success"
+            elif diff_count == 0 and pending_count > 0:
+                stats["in_sync"] += 1
+                status = "PENDING_SYNC"
+                status_label = f"⏳ In wachtrij ({pending_count})"
+                status_badge = "badge-info"
             else:
                 stats["diffs_found"] += 1
                 status = "DIFF_FOUND"
-                status_label = f"{len(diffs) + len(contacts_diff)} verschillen"
+                status_label = f"{diff_count} verschillen"
                 status_badge = "badge-danger"
 
-            if filter_type == "all" or (filter_type == "diffs" and not is_in_sync) or (filter_type == "in_sync" and is_in_sync):
+            # Filter toepassen
+            is_matched = True
+            show_card = False
+            if filter_type == "all":
+                show_card = True
+            elif filter_type == "diffs" and diff_count > 0:
+                show_card = True
+            elif filter_type == "in_sync" and diff_count == 0:
+                show_card = True
+
+            if show_card:
                 companies_list.append({
                     "customer_number": cust_no,
                     "hubspot_id": hs_id,
@@ -247,7 +231,10 @@ class DiffService:
                     "identical_fields": identical_fields,
                     "identical_contacts": identical_contacts,
                     "ignored_contacts": ignored_contacts,
-                    "identical_count": len(identical_fields) + len(identical_contacts) + len(ignored_contacts)
+                    "pending_fields": pending_fields,
+                    "pending_contacts": pending_contacts,
+                    "pending_count": pending_count,
+                    "identical_count": identical_count
                 })
 
         return {
@@ -255,13 +242,16 @@ class DiffService:
             "companies": companies_list
         }
 
-    def _compare_contacts(self, ss_contacts: List[Dict], hs_contacts: List[Dict], cust_no: str = "", ignored_set: set = None):
-        """Vergelijkt contactpersonen op e-mail en naam, met deduplicatie en negeer-filter."""
+    def _compare_contacts(self, ss_contacts: List[Dict], hs_contacts: List[Dict], cust_no: str = "", hs_id: str = "", ignored_set: set = None, pending_by_entity_field: dict = None):
+        """Vergelijkt contactpersonen op e-mail en naam, met deduplicatie, negeer-filter en wachtrij-herkenning."""
         diffs = []
         identical_contacts = []
         ignored_contacts = []
+        pending_contacts = []
         if ignored_set is None:
             ignored_set = set()
+        if pending_by_entity_field is None:
+            pending_by_entity_field = {}
 
         # 1. Schoon Silvasoft contacten op (geen facturatie-afdelingen en ontdubbelen)
         clean_ss = []
@@ -351,15 +341,35 @@ class DiffService:
                 s_ph = clean_phone(sc.get("phone"))
                 h_ph = clean_phone(match_hc.get("phone"))
                 if s_ph != h_ph and (s_ph or h_ph):
-                    diffs.append({
-                        "type": "CONTACT_PHONE_DIFF",
-                        "contact_name": c_name,
-                        "contact_email": sc.get("email") or match_hc.get("email"),
-                        "silvasoft": sc.get("phone") or "(leeg)",
-                        "hubspot": match_hc.get("phone") or "(leeg)",
-                        "hs_contact_id": str(match_hc.get("id")),
-                        "ss_contact_guid": str(sc.get("guid") or "")
-                    })
+                    # Check of er een pending taak is voor contact phone
+                    p_task = (
+                        pending_by_entity_field.get((cust_no, "phone")) or
+                        pending_by_entity_field.get((cust_no, "UPDATE_CONTACT_PHONE")) or
+                        pending_by_entity_field.get((str(match_hc.get("id")), "phone"))
+                    )
+                    if p_task:
+                        sched_dt = p_task.get("scheduled_at")
+                        sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                        pending_contacts.append({
+                            "label": f"👤 Tel: {c_name}",
+                            "contact_name": c_name,
+                            "silvasoft": sc.get("phone") or "(leeg)",
+                            "hubspot": match_hc.get("phone") or "(leeg)",
+                            "target": p_task.get("target"),
+                            "new_value": p_task.get("new_value") or "",
+                            "scheduled_at": sched_str,
+                            "task_id": p_task.get("id")
+                        })
+                    else:
+                        diffs.append({
+                            "type": "CONTACT_PHONE_DIFF",
+                            "contact_name": c_name,
+                            "contact_email": sc.get("email") or match_hc.get("email"),
+                            "silvasoft": sc.get("phone") or "(leeg)",
+                            "hubspot": match_hc.get("phone") or "(leeg)",
+                            "hs_contact_id": str(match_hc.get("id")),
+                            "ss_contact_guid": str(sc.get("guid") or "")
+                        })
                 elif s_ph == h_ph and (s_ph or h_ph):
                     identical_contacts.append({
                         "label": f"👤 Tel: {c_name}",
@@ -368,14 +378,30 @@ class DiffService:
                     })
             else:
                 # Staat alleen in Silvasoft
-                diffs.append({
-                    "type": "CONTACT_ONLY_IN_SILVASOFT",
-                    "contact_name": sc.get("name"),
-                    "contact_email": sc.get("email"),
-                    "contact_phone": sc.get("phone"),
-                    "silvasoft": sc.get("name"),
-                    "hubspot": "Niet aanwezig in HubSpot"
-                })
+                # Check of er een pending ADD_CONTACT taak naar HubSpot is
+                p_task = pending_by_entity_field.get((hs_id, "ADD_CONTACT"))
+                if p_task:
+                    sched_dt = p_task.get("scheduled_at")
+                    sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                    pending_contacts.append({
+                        "label": f"👤 Contact (naar HS): {sc.get('name')}",
+                        "contact_name": sc.get("name"),
+                        "silvasoft": sc.get("name"),
+                        "hubspot": "Wordt aangemaakt in HS",
+                        "target": "HUBSPOT",
+                        "new_value": sc.get("name"),
+                        "scheduled_at": sched_str,
+                        "task_id": p_task.get("id")
+                    })
+                else:
+                    diffs.append({
+                        "type": "CONTACT_ONLY_IN_SILVASOFT",
+                        "contact_name": sc.get("name"),
+                        "contact_email": sc.get("email"),
+                        "contact_phone": sc.get("phone"),
+                        "silvasoft": sc.get("name"),
+                        "hubspot": "Niet aanwezig in HubSpot"
+                    })
 
         # Check contacten die alleen in HubSpot staan
         for hc in clean_hs:
@@ -393,20 +419,35 @@ class DiffService:
                         "hubspot": hc.get("name")
                     })
                 else:
-                    diffs.append({
-                        "type": "CONTACT_ONLY_IN_HUBSPOT",
-                        "contact_name": hc.get("name"),
-                        "contact_email": hc.get("email"),
-                        "contact_phone": hc.get("phone"),
-                        "silvasoft": "Niet aanwezig in Silvasoft",
-                        "hubspot": hc.get("name"),
-                        "hs_contact_id": cid,
-                        "ss_has_contact": len(clean_ss) > 0,
-                        "ss_primary_name": clean_ss[0].get("name") if clean_ss else ""
-                    })
+                    # Check of er een pending ADD_CONTACT taak naar Silvasoft is
+                    p_task = pending_by_entity_field.get((cust_no, "ADD_CONTACT"))
+                    if p_task:
+                        sched_dt = p_task.get("scheduled_at")
+                        sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                        pending_contacts.append({
+                            "label": f"👤 Contact (naar SS): {hc.get('name')}",
+                            "contact_name": hc.get("name"),
+                            "silvasoft": "Wordt aangemaakt in SS",
+                            "hubspot": hc.get("name"),
+                            "target": "SILVASOFT",
+                            "new_value": hc.get("name"),
+                            "scheduled_at": sched_str,
+                            "task_id": p_task.get("id")
+                        })
+                    else:
+                        diffs.append({
+                            "type": "CONTACT_ONLY_IN_HUBSPOT",
+                            "contact_name": hc.get("name"),
+                            "contact_email": hc.get("email"),
+                            "contact_phone": hc.get("phone"),
+                            "silvasoft": "Niet aanwezig in Silvasoft",
+                            "hubspot": hc.get("name"),
+                            "hs_contact_id": cid,
+                            "ss_has_contact": len(clean_ss) > 0,
+                            "ss_primary_name": clean_ss[0].get("name") if clean_ss else ""
+                        })
 
-        return diffs, identical_contacts, ignored_contacts
+        return diffs, identical_contacts, ignored_contacts, pending_contacts
 
 
 diff_service = DiffService()
-

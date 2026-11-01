@@ -133,7 +133,24 @@ class QueueService:
                         hubspot_client.sync_companies_to_cache()
 
                 elif action == "ADD_CONTACT":
-                    hubspot_client.create_and_associate_contact(entity_id, payload)
+                    res = hubspot_client.create_and_associate_contact(entity_id, payload)
+                    new_contact_id = res.get("id") if isinstance(res, dict) else ""
+                    # Voeg direct toe aan contacts_json in sync_hubspot_cache
+                    with get_db() as db:
+                        row = db.fetchone(f"SELECT contacts_json FROM {prefix}hubspot_cache WHERE hubspot_id = %s", (str(entity_id),))
+                        if row:
+                            cts = json.loads(row["contacts_json"] or "[]")
+                            if not any(str(c.get("id")) == str(new_contact_id) for c in cts):
+                                cts.append({
+                                    "id": str(new_contact_id),
+                                    "name": payload.get("name") or f"{payload.get('first_name', '')} {payload.get('last_name', '')}".strip(),
+                                    "first_name": payload.get("first_name", ""),
+                                    "last_name": payload.get("last_name", ""),
+                                    "email": payload.get("email", ""),
+                                    "phone": payload.get("phone", ""),
+                                    "is_primary": len(cts) == 0
+                                })
+                                db.execute(f"UPDATE {prefix}hubspot_cache SET contacts_json = %s WHERE hubspot_id = %s", (json.dumps(cts), str(entity_id)))
 
                 elif action == "UPDATE_CONTACT_PHONE":
                     hubspot_client.update_contact(entity_id, {"phone": new_val})

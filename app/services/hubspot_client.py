@@ -299,7 +299,7 @@ class HubSpotClient:
         return resp.json()
 
     def create_and_associate_contact(self, company_id: str, contact_data: Dict[str, str]) -> Dict[str, Any]:
-        """Maakt een contactpersoon aan en koppelt deze direct aan het bedrijf."""
+        """Maakt een contactpersoon aan en koppelt deze direct aan het bedrijf. Als contact al bestaat (409), koppel bestaand contact."""
         url = f"{self.BASE_URL}/crm/v3/objects/contacts"
         payload = {
             "properties": {
@@ -321,6 +321,40 @@ class HubSpotClient:
             ]
         }
         resp = self._request_with_retry("POST", url, json=payload)
+        if resp.status_code == 409:
+            # Contactpersoon bestaat al in HubSpot; koppel bestaand contact aan bedrijf
+            c_email = (contact_data.get("email") or "").strip()
+            logger.info(f"Contactpersoon met e-mail '{c_email}' bestaat al in HubSpot. Koppelen aan bedrijf {company_id}...")
+            err_data = resp.json() if resp.text else {}
+            msg = err_data.get("message", "")
+            m = re.search(r"Existing ID:\s*(\d+)", msg)
+            existing_id = m.group(1) if m else None
+
+            if not existing_id and c_email:
+                # Zoek ID op via search endpoint
+                s_url = f"{self.BASE_URL}/crm/v3/objects/contacts/search"
+                s_body = {
+                    "filterGroups": [{
+                        "filters": [{
+                            "propertyName": "email",
+                            "operator": "EQ",
+                            "value": c_email
+                        }]
+                    }]
+                }
+                s_resp = self._request_with_retry("POST", s_url, json=s_body)
+                if s_resp.status_code == 200:
+                    res_list = s_resp.json().get("results", [])
+                    if res_list:
+                        existing_id = res_list[0].get("id")
+
+            if existing_id:
+                assoc_url = f"{self.BASE_URL}/crm/v3/objects/contacts/{existing_id}/associations/companies/{company_id}/contact_to_company"
+                assoc_resp = self._request_with_retry("PUT", assoc_url)
+                assoc_resp.raise_for_status()
+                logger.info(f"✅ Bestaand contact #{existing_id} succesvol gekoppeld aan HubSpot bedrijf #{company_id}")
+                return {"id": existing_id, "associated": True}
+
         resp.raise_for_status()
         return resp.json()
 
