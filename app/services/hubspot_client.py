@@ -79,25 +79,38 @@ class HubSpotClient:
         return resp.json()
 
     def ensure_silvasoft_property(self):
-        """Controleert of 'silvasoft_customer_number' bestaat bij bedrijven in HubSpot, maakt deze anders aan."""
+        """Controleert of benodigde custom properties ('silvasoft_customer_number' en 'kvk_nummer') bestaan in HubSpot."""
         if not self.access_token:
             return
-        url = f"{self.BASE_URL}/crm/v3/properties/companies/silvasoft_customer_number"
-        resp = self._request_with_retry("GET", url)
-        if resp.status_code == 404:
-            logger.info("Aanmaken custom property 'silvasoft_customer_number' in HubSpot...")
-            create_url = f"{self.BASE_URL}/crm/v3/properties/companies"
-            payload = {
+
+        needed = [
+            {
                 "name": "silvasoft_customer_number",
                 "label": "Silvasoft Klantnummer",
                 "type": "string",
                 "fieldType": "text",
                 "groupName": "companyinformation",
                 "description": "Klantnummer gekoppeld vanuit Silvasoft boekhouding."
+            },
+            {
+                "name": "kvk_nummer",
+                "label": "KvK-nummer",
+                "type": "string",
+                "fieldType": "text",
+                "groupName": "companyinformation",
+                "description": "Kamer van Koophandel nummer"
             }
-            c_resp = self._request_with_retry("POST", create_url, json=payload)
-            if c_resp.status_code in (200, 201):
-                logger.info("✅ Property 'silvasoft_customer_number' succesvol aangemaakt in HubSpot.")
+        ]
+
+        for prop in needed:
+            url = f"{self.BASE_URL}/crm/v3/properties/companies/{prop['name']}"
+            resp = self._request_with_retry("GET", url)
+            if resp.status_code == 404:
+                logger.info(f"Aanmaken custom property '{prop['name']}' in HubSpot...")
+                create_url = f"{self.BASE_URL}/crm/v3/properties/companies"
+                c_resp = self._request_with_retry("POST", create_url, json=prop)
+                if c_resp.status_code in (200, 201):
+                    logger.info(f"✅ Property '{prop['name']}' succesvol aangemaakt in HubSpot.")
 
     def sync_companies_to_cache(self) -> int:
         """Haalt alle bedrijven en hun gekoppelde contacten op uit HubSpot en slaat ze op in sync_hubspot_cache."""
