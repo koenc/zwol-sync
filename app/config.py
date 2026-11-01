@@ -26,6 +26,8 @@ class Config:
 
     # HubSpot API
     HUBSPOT_ACCESS_TOKEN = ""
+    HUBSPOT_PORTAL_ID = "25230600"
+
 
     # Queue Worker Settings
     SILVASOFT_QUEUE_INTERVAL_SECONDS = 240  # 4 minuten (max 15/uur)

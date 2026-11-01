@@ -20,6 +20,13 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = Config.SECRET_KEY
 
 
+@app.context_processor
+def inject_globals():
+    return {
+        "hubspot_portal_id": Config.HUBSPOT_PORTAL_ID
+    }
+
+
 @app.route("/health")
 def health():
     return jsonify({"status": "ok", "app": "zwol-sync", "time": datetime.datetime.now().isoformat()})

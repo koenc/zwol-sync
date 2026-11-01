@@ -184,11 +184,19 @@ function searchHubspotCompanies(query) {
         return;
       }
       let html = '';
+      const portalId = window.HUBSPOT_PORTAL_ID || '25230600';
       data.results.forEach(h => {
         html += `
           <div class="modal-result-item" onclick="confirmManualMatch('${currentModalSsNo}', '${h.hubspot_id}', '${escapeHtml(h.name)}')">
-            <strong>${escapeHtml(h.name)}</strong> 
-            <small style="color:#64748b;">(ID: ${h.hubspot_id} • ${escapeHtml(h.city || 'Geen plaats')} • KvK: ${escapeHtml(h.kvk_number || '-')})</small>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <strong>${escapeHtml(h.name)}</strong> 
+                <small style="color:#64748b;">(ID: ${h.hubspot_id} • ${escapeHtml(h.city || 'Geen plaats')} • KvK: ${escapeHtml(h.kvk_number || '-')})</small>
+              </div>
+              <a href="https://app-eu1.hubspot.com/contacts/${portalId}/company/${h.hubspot_id}" target="_blank" onclick="event.stopPropagation();" class="hs-link" title="Bekijk in HubSpot" style="font-size:12px;">
+                Openen ↗
+              </a>
+            </div>
           </div>
         `;
       });

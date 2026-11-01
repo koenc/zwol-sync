@@ -69,9 +69,9 @@
           <span class="company-meta">Klantnummer: <strong>#{{ c.customer_number }}</strong></span>
           {% if c.hubspot_id %}
             <span class="company-meta">
-              HubSpot ID: 
-              <a href="https://app.hubspot.com/contacts/settings/company/{{ c.hubspot_id }}" target="_blank" class="hs-link">
-                {{ c.hubspot_id }} ↗
+              HubSpot: 
+              <a href="https://app-eu1.hubspot.com/contacts/{{ hubspot_portal_id }}/company/{{ c.hubspot_id }}" target="_blank" class="hs-link" title="Open {{ c.name }} in HubSpot">
+                #{{ c.hubspot_id }} ↗
               </a>
             </span>
           {% endif %}
