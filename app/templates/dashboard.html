@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - ZWOL Sync{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+  <div class="stats-grid">
+    <div class="stat-card" onclick="setFilter('all')">
+      <div class="stat-num">{{ stats.total_silvasoft }}</div>
+      <div class="stat-label">Bedrijven in Silvasoft</div>
+    </div>
+    <div class="stat-card stat-success" onclick="setFilter('in_sync')">
+      <div class="stat-num">{{ stats.in_sync }}</div>
+      <div class="stat-label">✅ Volledig Synchroon</div>
+    </div>
+    <div class="stat-card stat-danger active-card" onclick="setFilter('diffs')">
+      <div class="stat-num">{{ stats.diffs_found }}</div>
+      <div class="stat-label">⚠️ Diffs / Verschillen</div>
+    </div>
+    <div class="stat-card stat-warning" onclick="setFilter('new_in_silvasoft')">
+      <div class="stat-num">{{ stats.new_in_silvasoft }}</div>
+      <div class="stat-label">➕ Nog niet in HubSpot</div>
+    </div>
+    <div class="stat-card stat-info" onclick="location.href='/queue'">
+      <div class="stat-num" id="stat-queue-count">{{ queue_summary.pending_count }}</div>
+      <div class="stat-label">⏳ In Wachtrij (Silvasoft: {{ queue_summary.silvasoft_pending }})</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="filter-tabs">
+      <a href="/?filter=diffs" class="tab-btn {% if active_filter == 'diffs' %}active{% endif %}">
+        ⚠️ Verschillen ({{ stats.diffs_found }})
+      </a>
+      <a href="/?filter=new_in_silvasoft" class="tab-btn {% if active_filter == 'new_in_silvasoft' %}active{% endif %}">
+        ➕ Nieuw in Silvasoft ({{ stats.new_in_silvasoft }})
+      </a>
+      <a href="/?filter=in_sync" class="tab-btn {% if active_filter == 'in_sync' %}active{% endif %}">
+        ✅ Synchroon ({{ stats.in_sync }})
+      </a>
+      <a href="/?filter=all" class="tab-btn {% if active_filter == 'all' %}active{% endif %}">
+        Alle Bedrijven ({{ stats.total_silvasoft }})
+      </a>
+    </div>
+
+    <div class="search-box">
+      <input type="text" id="company-search" placeholder="🔍 Zoek op naam, plaats, KvK of klantnummer..." onkeyup="filterCompanies()">
+    </div>
+  </div>
+</div>
+
+<div class="companies-container" id="companies-list">
+  {% if not companies %}
+    <div class="empty-state">
+      <h3>🎉 Geen bedrijven gevonden voor dit filter!</h3>
+      <p>Alles is synchroon of er is nog geen synchronisatie uitgevoerd.</p>
+      <button class="btn btn-primary" onclick="triggerSync('all')">Nu Alles Synchroniseren</button>
+    </div>
+  {% endif %}
+
+  {% for c in companies %}
+    <div class="company-card" id="card-{{ c.customer_number }}" data-name="{{ c.name|lower }}" data-city="{{ c.silvasoft.city|lower }}" data-custno="{{ c.customer_number }}" data-kvk="{{ c.silvasoft.kvk_number }}">
+      
+      <!-- Card Header -->
+      <div class="card-header">
+        <div class="card-title-group">
+          <span class="badge {{ c.status_badge }}">{{ c.status_label }}</span>
+          <h2 class="company-title">{{ c.name }}</h2>
+          <span class="company-meta">Klantnummer: <strong>#{{ c.customer_number }}</strong></span>
+          {% if c.hubspot_id %}
+            <span class="company-meta">
+              HubSpot ID: 
+              <a href="https://app.hubspot.com/contacts/settings/company/{{ c.hubspot_id }}" target="_blank" class="hs-link">
+                {{ c.hubspot_id }} ↗
+              </a>
+            </span>
+          {% endif %}
+        </div>
+
+        <div class="card-actions">
+          {% if c.status == 'NEW_IN_SILVASOFT' %}
+            <button class="btn btn-primary btn-sm" onclick="createInHubspot('{{ c.customer_number }}', '{{ c.name|escape }}')">
+              ➕ Aanmaken in HubSpot
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="openManualMatch('{{ c.customer_number }}', '{{ c.name|escape }}')">
+              🔗 Handmatig Koppelen
+            </button>
+          {% elif c.status == 'DIFF_FOUND' %}
+            <button class="btn btn-outline-primary btn-sm" onclick="bulkSync('{{ c.customer_number }}', '{{ c.hubspot_id }}', 'TO_HUBSPOT')" title="Kopieer alle afwijkende Silvasoft-waarden naar HubSpot">
+              Alles ➔ HubSpot
+            </button>
+            <button class="btn btn-outline-primary btn-sm" onclick="bulkSync('{{ c.customer_number }}', '{{ c.hubspot_id }}', 'TO_SILVASOFT')" title="Kopieer alle afwijkende HubSpot-waarden naar Silvasoft (via wachtrij)">
+              Alles ⬅ Silvasoft
+            </button>
+            <button class="btn btn-text btn-sm text-muted" onclick="unmatch('{{ c.customer_number }}')" title="Koppeling met dit HubSpot-bedrijf verbreken">
+              Ontkoppelen
+            </button>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Card Body: Side-by-Side Diff Table -->
+      {% if c.hubspot %}
+        <div class="diff-table-container">
+          <table class="diff-table">
+            <thead>
+              <tr>
+                <th style="width: 18%;">Veld</th>
+                <th style="width: 35%;">📦 Silvasoft</th>
+                <th style="width: 12%; text-align: center;">Actie</th>
+                <th style="width: 35%;">🟠 HubSpot</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in c.diffs %}
+                <tr class="diff-row diff-highlight">
+                  <td class="diff-field-name">{{ d.label }}</td>
+                  <td class="diff-val-ss">
+                    <strong>{{ d.silvasoft }}</strong>
+                  </td>
+                  <td class="diff-actions">
+                    <button class="btn-action-arrow btn-to-hs" onclick="syncField('HUBSPOT', '{{ c.hubspot_id }}', '{{ d.field }}', '{{ d.silvasoft|escape }}', '{{ d.hubspot|escape }}')" title="Overschrijf HubSpot met '{{ d.silvasoft }}'">
+                      ➔
+                    </button>
+                    <button class="btn-action-arrow btn-to-ss" onclick="syncField('SILVASOFT', '{{ c.customer_number }}', '{{ d.field }}', '{{ d.hubspot|escape }}', '{{ d.silvasoft|escape }}')" title="Plaats in Silvasoft-wachtrij met '{{ d.hubspot }}'">
+                      ⬅
+                    </button>
+                  </td>
+                  <td class="diff-val-hs">
+                    <strong>{{ d.hubspot }}</strong>
+                  </td>
+                </tr>
+              {% endfor %}
+
+              <!-- Contactpersonen Diffs -->
+              {% for cd in c.contacts_diff %}
+                <tr class="diff-row diff-highlight contact-diff-row">
+                  <td class="diff-field-name">👤 Contact</td>
+                  <td class="diff-val-ss">
+                    {{ cd.silvasoft }}
+                  </td>
+                  <td class="diff-actions">
+                    {% if cd.type == 'CONTACT_ONLY_IN_SILVASOFT' %}
+                      <button class="btn btn-xs btn-primary" onclick="addContactToHubspot('{{ c.hubspot_id }}', '{{ cd.contact_name|escape }}', '{{ cd.contact_email|escape }}', '{{ cd.contact_phone|escape }}')">
+                        ➔ Naar HS
+                      </button>
+                    {% elif cd.type == 'CONTACT_ONLY_IN_HUBSPOT' %}
+                      <span class="badge badge-secondary">Alleen in HS</span>
+                    {% elif cd.type == 'CONTACT_PHONE_DIFF' %}
+                      <button class="btn-action-arrow btn-to-hs" onclick="syncContactPhone('HUBSPOT', '{{ cd.hs_contact_id }}', '{{ cd.silvasoft|escape }}')">➔</button>
+                    {% endif %}
+                  </td>
+                  <td class="diff-val-hs">
+                    {{ cd.hubspot }}
+                  </td>
+                </tr>
+              {% endfor %}
+
+              {% if not c.diffs and not c.contacts_diff %}
+                <tr>
+                  <td colspan="4" class="text-center text-success" style="padding: 16px;">
+                    ✅ Alle gegevens en contactpersonen zijn 100% identiek.
+                  </td>
+                </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <!-- Alleen Silvasoft Overzicht -->
+        <div class="single-overview-grid">
+          <div><strong>Adres:</strong> {{ c.silvasoft.street }} {{ c.silvasoft.unit }}, {{ c.silvasoft.postal_code }} {{ c.silvasoft.city }}</div>
+          <div><strong>Telefoon:</strong> {{ c.silvasoft.phone or '-' }}</div>
+          <div><strong>E-mail:</strong> {{ c.silvasoft.email or '-' }}</div>
+          <div><strong>KvK:</strong> {{ c.silvasoft.kvk_number or '-' }}</div>
+          <div><strong>Contact:</strong> {{ c.silvasoft.primary_contact_name or '-' }} ({{ c.silvasoft.primary_contact_email or '-' }})</div>
+          <div><strong>Website:</strong> {{ c.silvasoft.website or '-' }}</div>
+        </div>
+      {% endif %}
+
+    </div>
+  {% endfor %}
+</div>
+
+<!-- Modal voor Handmatig Koppelen -->
+<div id="manual-match-modal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Handmatig koppelen aan HubSpot bedrijf</h3>
+      <span class="modal-close" onclick="closeManualMatch()">&times;</span>
+    </div>
+    <div class="modal-body">
+      <p>Koppel Silvasoft klant <strong id="modal-ss-name"></strong> (#<span id="modal-ss-no"></span>):</p>
+      <input type="text" id="modal-search-input" class="form-control" placeholder="Typ bedrijfsnaam of plaats in HubSpot..." onkeyup="searchHubspotCompanies(this.value)">
+      <div id="modal-search-results" class="modal-results-list"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

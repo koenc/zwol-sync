@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Geschiedenis - ZWOL Sync{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>📜 Synchronisatie Geschiedenis (Audit Trail)</h1>
+    <p class="text-muted">Overzicht van alle goedgekeurde en uitgevoerde wijzigingen tussen Silvasoft en HubSpot.</p>
+  </div>
+</div>
+
+<div class="panel">
+  {% if history %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Tijdstip</th>
+          <th>Bedrijf</th>
+          <th>Doelsysteem</th>
+          <th>Wijziging</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in history %}
+          <tr>
+            <td>{{ h.created_at }}</td>
+            <td><strong>{{ h.entity_name }}</strong></td>
+            <td>
+              <span class="badge {% if h.target_system == 'SILVASOFT' %}badge-warning{% else %}badge-primary{% endif %}">
+                {{ h.target_system }}
+              </span>
+            </td>
+            <td>{{ h.change_summary }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <p>Nog geen synchronisaties geregistreerd in de geschiedenis.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

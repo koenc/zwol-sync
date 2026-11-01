@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Wachtrij - ZWOL Sync{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>⏳ Synchronisatie Wachtrij (Queue)</h1>
+    <p class="text-muted">
+      Silvasoft updates worden gedoseerd verwerkt (maximaal 1 verzoek per 4 minuten) om binnen het gratis API-budget te blijven.
+      HubSpot updates worden direct uitgevoerd.
+    </p>
+  </div>
+</div>
+
+<div class="queue-status-banner">
+  <div class="status-item">
+    <span class="status-num">{{ queue.pending_count }}</span>
+    <span class="status-desc">In wachtrij</span>
+  </div>
+  <div class="status-item">
+    <span class="status-num">{{ queue.silvasoft_pending }}</span>
+    <span class="status-desc">Silvasoft taken</span>
+  </div>
+  <div class="status-item">
+    <span class="status-num">{{ queue.hubspot_pending }}</span>
+    <span class="status-desc">HubSpot taken</span>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Openstaande Wachtrijtaken</h2>
+  {% if queue.pending_tasks %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Doel</th>
+          <th>Actie</th>
+          <th>Klant / Bedrijf</th>
+          <th>Veld</th>
+          <th>Nieuwe Waarde</th>
+          <th>Gepland voor</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in queue.pending_tasks %}
+          <tr>
+            <td>#{{ t.id }}</td>
+            <td><span class="badge {% if t.target == 'SILVASOFT' %}badge-warning{% else %}badge-primary{% endif %}">{{ t.target }}</span></td>
+            <td>{{ t.action }}</td>
+            <td>#{{ t.entity_id }}</td>
+            <td><code>{{ t.field_name or '-' }}</code></td>
+            <td>{{ t.new_value or '-' }}</td>
+            <td>{{ t.scheduled_at }}</td>
+            <td><span class="badge badge-secondary">{{ t.status }}</span></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <p>🎉 De wachtrij is helemaal leeg! Alle taken zijn verwerkt.</p>
+    </div>
+  {% endif %}
+</div>
+
+<div class="panel" style="margin-top: 24px;">
+  <h2>Recent Voltooide / Mislukte Taken</h2>
+  {% if queue.recent_tasks %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Doel</th>
+          <th>Actie</th>
+          <th>Klant</th>
+          <th>Veld</th>
+          <th>Status</th>
+          <th>Verwerkt op</th>
+          <th>Foutmelding</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in queue.recent_tasks %}
+          <tr>
+            <td>#{{ t.id }}</td>
+            <td><span class="badge {% if t.target == 'SILVASOFT' %}badge-warning{% else %}badge-primary{% endif %}">{{ t.target }}</span></td>
+            <td>{{ t.action }}</td>
+            <td>#{{ t.entity_id }}</td>
+            <td><code>{{ t.field_name or '-' }}</code></td>
+            <td>
+              <span class="badge {% if t.status == 'SUCCESS' %}badge-success{% else %}badge-danger{% endif %}">
+                {{ t.status }}
+              </span>
+            </td>
+            <td>{{ t.processed_at or '-' }}</td>
+            <td class="text-danger"><small>{{ t.error_message or '-' }}</small></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+{% endblock %}
