@@ -298,29 +298,66 @@ class DiffService:
 
             if match_hc:
                 matched_hs_ids.add(str(match_hc.get("id")))
-                # Vergelijk telefoonnummer
+                c_name = sc.get("name") or match_hc.get("name")
+
+                # A. Contactpersoon Naam vergelijken
+                s_nm = clean_str(sc.get("name"))
+                h_nm = clean_str(match_hc.get("name"))
+                if s_nm.lower() == h_nm.lower() and s_nm:
+                    identical_contacts.append({
+                        "label": f"👤 Naam: {c_name}",
+                        "silvasoft": s_nm,
+                        "hubspot": h_nm
+                    })
+                elif s_nm.lower() != h_nm.lower() and (s_nm or h_nm):
+                    diffs.append({
+                        "type": "CONTACT_NAME_DIFF",
+                        "contact_name": c_name,
+                        "contact_email": sc.get("email") or match_hc.get("email"),
+                        "silvasoft": s_nm or "(leeg)",
+                        "hubspot": h_nm or "(leeg)",
+                        "hs_contact_id": str(match_hc.get("id")),
+                        "ss_contact_guid": str(sc.get("guid") or "")
+                    })
+
+                # B. Contactpersoon E-mail vergelijken
+                s_mail_clean = clean_str(sc.get("email")).lower()
+                h_mail_clean = clean_str(match_hc.get("email")).lower()
+                if s_mail_clean == h_mail_clean and s_mail_clean:
+                    identical_contacts.append({
+                        "label": f"👤 E-mail: {c_name}",
+                        "silvasoft": sc.get("email"),
+                        "hubspot": match_hc.get("email")
+                    })
+                elif s_mail_clean != h_mail_clean and (s_mail_clean or h_mail_clean):
+                    diffs.append({
+                        "type": "CONTACT_EMAIL_DIFF",
+                        "contact_name": c_name,
+                        "contact_email": sc.get("email") or match_hc.get("email"),
+                        "silvasoft": sc.get("email") or "(leeg)",
+                        "hubspot": match_hc.get("email") or "(leeg)",
+                        "hs_contact_id": str(match_hc.get("id")),
+                        "ss_contact_guid": str(sc.get("guid") or "")
+                    })
+
+                # C. Contactpersoon Telefoonnummer vergelijken
                 s_ph = clean_phone(sc.get("phone"))
                 h_ph = clean_phone(match_hc.get("phone"))
                 if s_ph != h_ph and (s_ph or h_ph):
                     diffs.append({
                         "type": "CONTACT_PHONE_DIFF",
-                        "contact_name": sc.get("name") or match_hc.get("name"),
+                        "contact_name": c_name,
                         "contact_email": sc.get("email") or match_hc.get("email"),
                         "silvasoft": sc.get("phone") or "(leeg)",
                         "hubspot": match_hc.get("phone") or "(leeg)",
                         "hs_contact_id": str(match_hc.get("id")),
                         "ss_contact_guid": str(sc.get("guid") or "")
                     })
-                else:
-                    c_name = sc.get("name") or match_hc.get("name")
-                    c_mail = sc.get("email") or match_hc.get("email")
-                    c_ph = sc.get("phone") or match_hc.get("phone")
+                elif s_ph == h_ph and (s_ph or h_ph):
                     identical_contacts.append({
-                        "contact_name": c_name,
-                        "contact_email": c_mail,
-                        "contact_phone": c_ph,
-                        "silvasoft": f"{c_name} ({c_mail or 'geen mail'} • {c_ph or 'geen tel'})",
-                        "hubspot": f"{c_name} ({c_mail or 'geen mail'} • {c_ph or 'geen tel'})"
+                        "label": f"👤 Tel: {c_name}",
+                        "silvasoft": sc.get("phone") or "(leeg)",
+                        "hubspot": match_hc.get("phone") or "(leeg)"
                     })
             else:
                 # Staat alleen in Silvasoft

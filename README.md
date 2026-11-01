@@ -17,7 +17,7 @@ Een desktop-georiënteerde webapplicatie om klant- en bedrijfsgegevens tussen **
    * Met duidelijke knoppen (`➔ Naar HubSpot` of `⬅ Naar Silvasoft`) bepaal je per datapunt welke kant de waarheid is.
 5. **Smart Rate-Limit Queue voor Silvasoft:**
    * Wijzigingen naar HubSpot worden direct realtime doorgevoerd.
-   * Wijzigingen naar Silvasoft worden in een wachtrij geplaatst en automatisch gedoseerd verwerkt (maximaal 1 verzoek per 4 minuten) om ruim binnen het gratis Silvasoft API-budget (15 req/uur) te blijven.
+   * Wijzigingen naar Silvasoft worden in een wachtrij geplaatst en automatisch gedoseerd verwerkt (maximaal 1 verzoek per 10 minuten) om ruim binnen het gratis Silvasoft API-budget (15 req/uur) te blijven.
 6. **Slimme Matching Engine:**
    * Automatische koppeling op basis van:
      1. HubSpot custom property `silvasoft_customer_number` (100% gouden match)

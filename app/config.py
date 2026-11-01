@@ -30,7 +30,8 @@ class Config:
 
 
     # Queue Worker Settings
-    SILVASOFT_QUEUE_INTERVAL_SECONDS = 240  # 4 minuten (max 15/uur)
+    SILVASOFT_QUEUE_INTERVAL_SECONDS = 600  # 10 minuten (max 6/uur om ruim budget te laten voor ZWOL Orders)
+
 
 
 def load_env():

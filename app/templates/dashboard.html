@@ -233,7 +233,7 @@
           {% for idc in c.identical_contacts %}
           <tr class="diff-row row-identical row-identical-{{ c.customer_number }}" style="display: none; background: #f8fafc; opacity: 0.9;">
             <td class="diff-field-name" style="color: #64748b;">
-              <span style="color: #10b981; font-weight: bold; margin-right: 4px;">✅</span> 👤 Contact: {{ idc.contact_name }}
+              <span style="color: #10b981; font-weight: bold; margin-right: 4px;">✅</span> {{ idc.label }}
             </td>
             <td class="diff-val-ss" style="color: #475569;">
               {{ idc.silvasoft }}
