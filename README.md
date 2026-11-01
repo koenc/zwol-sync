@@ -75,3 +75,4 @@ docker-compose up -d --build
 ```
 De applicatie draait vervolgens op:
 `http://<NAS-IP>:8505` (of via je Cloudflare tunnel op bijv. `sync.brouwerijzwol.nl`).
+

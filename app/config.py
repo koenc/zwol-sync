@@ -60,3 +60,4 @@ def load_env():
                                     setattr(Config, key, val)
         except Exception as e:
             print(f"Waarschuwing: Kon .env niet inlezen ({e})")
+

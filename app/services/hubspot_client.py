@@ -3,10 +3,12 @@ import json
 import logging
 import datetime
 import requests
+import urllib3
 from typing import Dict, List, Any, Optional
 from app.config import Config
 from app.database import get_db
 
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger("zwol_sync")
 
 
@@ -55,7 +57,7 @@ class HubSpotClient:
         backoff_seconds = 2
 
         for attempt in range(max_retries):
-            response = self.session.request(method, url, **kwargs)
+            response = self.session.request(method, url, verify=False, **kwargs)
             if response.status_code == 429:
                 wait_time = int(response.headers.get("Retry-After", backoff_seconds))
                 logger.warning(f"HubSpot rate limit (429). {wait_time}s wachten...")
@@ -307,3 +309,4 @@ class HubSpotClient:
 
 
 hubspot_client = HubSpotClient()
+

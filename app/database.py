@@ -98,20 +98,9 @@ class DatabaseConnection:
 def get_db():
     """Context manager voor veilige database interactie."""
     global _USE_SQLITE
-    if _USE_SQLITE or not Config.DB_HOST:
-        Config.SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(Config.SQLITE_PATH), timeout=10)
-        conn.row_factory = sqlite3.Row
-        db_wrapper = DatabaseConnection(conn, is_sqlite=True)
-        try:
-            yield db_wrapper
-            db_wrapper.commit()
-        except Exception:
-            db_wrapper.rollback()
-            raise
-        finally:
-            db_wrapper.close()
-    else:
+
+    if not _USE_SQLITE and Config.DB_HOST:
+        conn = None
         try:
             import pymysql
             conn = pymysql.connect(
@@ -122,32 +111,38 @@ def get_db():
                 database=Config.DB_NAME,
                 connect_timeout=5,
                 charset="utf8mb4",
-                cursorclass=pymysql.cursors.DictCursor
+                cursorclass=pymysql.cursors.DictCursor,
+                autocommit=False
             )
-            db_wrapper = DatabaseConnection(conn, is_sqlite=False)
-            try:
-                yield db_wrapper
-                db_wrapper.commit()
-            except Exception:
-                db_wrapper.rollback()
-                raise
-            finally:
-                db_wrapper.close()
+            db = DatabaseConnection(conn, is_sqlite=False)
         except Exception as e:
-            logger.warning(f"MariaDB fout tijdens runtime ({e}), overschakelen op SQLite...")
+            logger.warning(f"MariaDB connectiefout: {e}. Fallback naar SQLite.")
             _USE_SQLITE = True
-            Config.SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(str(Config.SQLITE_PATH), timeout=10)
-            conn.row_factory = sqlite3.Row
-            db_wrapper = DatabaseConnection(conn, is_sqlite=True)
+
+        if conn is not None:
             try:
-                yield db_wrapper
-                db_wrapper.commit()
+                yield db
+                db.commit()
             except Exception:
-                db_wrapper.rollback()
+                db.rollback()
                 raise
             finally:
-                db_wrapper.close()
+                db.close()
+            return
+
+    # SQLite fallback
+    Config.SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(Config.SQLITE_PATH), timeout=10)
+    conn.row_factory = sqlite3.Row
+    db_wrapper = DatabaseConnection(conn, is_sqlite=True)
+    try:
+        yield db_wrapper
+        db_wrapper.commit()
+    except Exception:
+        db_wrapper.rollback()
+        raise
+    finally:
+        db_wrapper.close()
 
 
 def init_db():
@@ -364,3 +359,4 @@ def init_db():
             """)
 
     logger.info(f"Database tabellen met prefix '{prefix}' succesvol gecontroleerd/aangemaakt.")
+

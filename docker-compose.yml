@@ -14,3 +14,4 @@ services:
       - TZ=Europe/Amsterdam
     extra_hosts:
       - "host.docker.internal:host-gateway"
+

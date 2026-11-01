@@ -224,3 +224,4 @@ def start_queue_worker():
         _STOP_EVENT.clear()
         _WORKER_THREAD = threading.Thread(target=_background_queue_worker, daemon=True)
         _WORKER_THREAD.start()
+

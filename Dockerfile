@@ -25,3 +25,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl --fail http://localhost:8505/health || exit 1
 
 CMD ["gunicorn", "--bind", "0.0.0.0:8505", "--workers", "2", "--threads", "4", "app.main:app"]
+
