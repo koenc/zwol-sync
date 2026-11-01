@@ -272,6 +272,16 @@ def init_db():
                 updated_at TEXT NOT NULL
             );
             """)
+
+            db.execute(f"""
+            CREATE TABLE IF NOT EXISTS {prefix}ignored_companies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_number TEXT UNIQUE NOT NULL,
+                company_name TEXT,
+                reason TEXT,
+                created_at TEXT NOT NULL
+            );
+            """)
         else:
             # MariaDB DDL
             db.execute(f"""
@@ -404,6 +414,16 @@ def init_db():
                 `is_hidden` TINYINT DEFAULT 0,
                 `updated_at` DATETIME NOT NULL,
                 PRIMARY KEY (`type_value`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+            db.execute(f"""
+            CREATE TABLE IF NOT EXISTS `{prefix}ignored_companies` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `customer_number` VARCHAR(50) NOT NULL UNIQUE,
+                `company_name` VARCHAR(255) NULL,
+                `reason` VARCHAR(255) NULL,
+                `created_at` DATETIME NOT NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             """)
 

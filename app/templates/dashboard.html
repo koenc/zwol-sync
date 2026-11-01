@@ -41,6 +41,11 @@
       <a href="/?filter=all" class="tab-btn {% if active_filter == 'all' %}active{% endif %}">
         Alle Bedrijven ({{ stats.total_silvasoft }})
       </a>
+      {% if stats.ignored_companies > 0 %}
+      <a href="/?filter=ignored" class="tab-btn {% if active_filter == 'ignored' %}active{% endif %}" style="color: #991b1b;">
+        🚫 Genegeerd ({{ stats.ignored_companies }})
+      </a>
+      {% endif %}
     </div>
 
     <div class="search-box">
@@ -69,18 +74,24 @@
       <div class="card-title-group">
         {% if c.status == 'IN_SYNC' %}
         <span class="badge badge-success">VOLLEDIG SYNCHROON</span>
-      {% elif c.status == 'PENDING_SYNC' %}
+        {% elif c.status == 'PENDING_SYNC' %}
         <span class="badge" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-weight: 600;">
           ⏳ {{ c.pending_count }} IN WACHTRIJ
         </span>
-      {% else %}
+        {% elif c.status == 'NEW_IN_SILVASOFT' %}
+        <span class="badge badge-warning">NOG NIET IN HUBSPOT</span>
+        {% elif c.status == 'IGNORED' %}
+        <span class="badge" style="background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; font-weight: 600;">
+          🚫 GENEGEERD
+        </span>
+        {% else %}
         <span class="badge badge-danger">{{ c.diffs|length + c.contacts_diff|length }} VERSCHILLEN</span>
         {% if c.pending_count > 0 %}
           <span class="badge" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-size: 11px; margin-left: 4px;">
             ⏳ {{ c.pending_count }} in wachtrij
           </span>
         {% endif %}
-      {% endif %}
+        {% endif %}
         <h2 class="company-title">{{ c.name }}</h2>
         <span class="company-meta">Klantnummer: <strong>#{{ c.customer_number }}</strong></span>
         {% if c.hubspot_id %}
@@ -103,6 +114,17 @@
         <button class="btn btn-outline btn-sm"
           data-cust-no="{{ c.customer_number }}" data-name="{{ c.name }}" onclick="openManualMatch(this.dataset.custNo, this.dataset.name)">
           🔗 Handmatig Koppelen
+        </button>
+        <button class="btn btn-text btn-sm text-danger"
+          data-cust-no="{{ c.customer_number }}" data-name="{{ c.name }}" onclick="ignoreCompany(this.dataset.custNo, this.dataset.name)"
+          title="Negeer dit bedrijf (wordt niet gesynchroniseerd en verdwijnt uit deze lijst)">
+          ✕ Negeren
+        </button>
+        {% elif c.status == 'IGNORED' %}
+        <button class="btn btn-outline-primary btn-sm"
+          data-cust-no="{{ c.customer_number }}" data-name="{{ c.name }}" onclick="unignoreCompany(this.dataset.custNo, this.dataset.name)"
+          title="Herstel dit bedrijf zodat het weer verschijnt bij 'Nieuw in Silvasoft'">
+          🔄 Herstellen
         </button>
         {% elif c.status == 'DIFF_FOUND' or c.status == 'IN_SYNC' or c.status == 'PENDING_SYNC' %}
         {% if c.identical_count > 0 %}

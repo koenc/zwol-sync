@@ -276,6 +276,69 @@ def api_unignore_contact():
     return jsonify({"success": True, "message": "Contactpersoon hersteld voor synchronisatie."})
 
 
+@app.route("/api/companies/ignore", methods=["POST"])
+def api_ignore_company():
+    data = request.get_json() or {}
+    cust_no = str(data.get("customer_number") or "").strip()
+    company_name = str(data.get("name") or "").strip()
+    reason = str(data.get("reason") or "user_ignored").strip()
+
+    if not cust_no:
+        return jsonify({"success": False, "error": "Klantnummer is verplicht."}), 400
+
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    prefix = Config.DB_TABLE_PREFIX
+    with get_db() as db:
+        if db.is_sqlite:
+            db.execute(f"""
+                INSERT INTO {prefix}ignored_companies (customer_number, company_name, reason, created_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT(customer_number) DO UPDATE SET
+                    company_name = excluded.company_name,
+                    reason = excluded.reason,
+                    created_at = excluded.created_at
+            """, (cust_no, company_name, reason, now_str))
+        else:
+            db.execute(f"""
+                INSERT INTO `{prefix}ignored_companies` (`customer_number`, `company_name`, `reason`, `created_at`)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    `company_name` = VALUES(`company_name`),
+                    `reason` = VALUES(`reason`),
+                    `created_at` = VALUES(`created_at`)
+            """, (cust_no, company_name, reason, now_str))
+
+        db.execute(f"""
+            INSERT INTO {prefix}history (entity_name, target_system, change_summary, created_at)
+            VALUES (%s, %s, %s, %s)
+        """, (company_name or f"Klant #{cust_no}", "SILVASOFT", "Bedrijf genegeerd voor HubSpot synchronisatie", now_str))
+
+    return jsonify({"success": True, "message": f"Bedrijf '{company_name}' succesvol genegeerd."})
+
+
+@app.route("/api/companies/unignore", methods=["POST"])
+def api_unignore_company():
+    data = request.get_json() or {}
+    cust_no = str(data.get("customer_number") or "").strip()
+
+    if not cust_no:
+        return jsonify({"success": False, "error": "Klantnummer is verplicht."}), 400
+
+    prefix = Config.DB_TABLE_PREFIX
+    with get_db() as db:
+        row = db.fetchone(f"SELECT company_name FROM {prefix}ignored_companies WHERE customer_number = %s", (cust_no,))
+        company_name = row.get("company_name") if row else f"Klant #{cust_no}"
+        db.execute(f"DELETE FROM {prefix}ignored_companies WHERE customer_number = %s", (cust_no,))
+
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        db.execute(f"""
+            INSERT INTO {prefix}history (entity_name, target_system, change_summary, created_at)
+            VALUES (%s, %s, %s, %s)
+        """, (company_name, "SILVASOFT", "Bedrijf hersteld voor synchronisatie", now_str))
+
+    return jsonify({"success": True, "message": f"Bedrijf '{company_name}' hersteld voor synchronisatie."})
+
+
 
 @app.route("/api/queue/apply-field", methods=["POST"])
 def api_apply_field():

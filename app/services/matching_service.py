@@ -69,9 +69,11 @@ class MatchingService:
             ss_companies = db.fetchall(f"SELECT * FROM {prefix}silvasoft_cache")
             hs_companies = db.fetchall(f"SELECT * FROM {prefix}hubspot_cache")
             existing_matches = db.fetchall(f"SELECT silvasoft_customer_number, hubspot_id FROM {prefix}matches")
+            ignored_comps = db.fetchall(f"SELECT customer_number FROM {prefix}ignored_companies")
 
             matched_ss_ids = {m["silvasoft_customer_number"] for m in existing_matches}
             matched_hs_ids = {m["hubspot_id"] for m in existing_matches}
+            ignored_ss_ids = {str(r["customer_number"]) for r in ignored_comps}
 
             # Bouw lookups voor HubSpot
             hs_by_custno = {}
@@ -124,7 +126,7 @@ class MatchingService:
 
             for s in ss_companies:
                 cust_no = str(s["customer_number"])
-                if cust_no in matched_ss_ids:
+                if cust_no in matched_ss_ids or cust_no in ignored_ss_ids:
                     continue
 
                 target_hs_id = None

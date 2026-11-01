@@ -56,6 +56,7 @@ class DiffService:
             hs_rows = db.fetchall(f"SELECT * FROM {prefix}hubspot_cache")
             matches = db.fetchall(f"SELECT * FROM {prefix}matches")
             ignored_rows = db.fetchall(f"SELECT customer_number, contact_id FROM {prefix}ignored_contacts")
+            ignored_comp_rows = db.fetchall(f"SELECT customer_number FROM {prefix}ignored_companies")
             pending_rows = db.fetchall(f"""
                 SELECT id, target, action, entity_id, field_name, new_value, scheduled_at, payload_json
                 FROM {prefix}queue
@@ -63,6 +64,7 @@ class DiffService:
             """)
 
         ignored_set = {(str(r["customer_number"]), str(r["contact_id"])) for r in ignored_rows}
+        ignored_comp_set = {str(r["customer_number"]) for r in ignored_comp_rows}
         hs_by_id = {str(h["hubspot_id"]): h for h in hs_rows}
         match_by_ss = {str(m["silvasoft_customer_number"]): str(m["hubspot_id"]) for m in matches}
 
@@ -89,6 +91,7 @@ class DiffService:
             "in_sync": 0,
             "diffs_found": 0,
             "new_in_silvasoft": 0,
+            "ignored_companies": len(ignored_comp_rows),
             "unmatched": 0
         }
 
@@ -99,6 +102,28 @@ class DiffService:
 
             # Case 1: Nog niet in HubSpot
             if not hs:
+                if cust_no in ignored_comp_set:
+                    if filter_type in ("all", "ignored"):
+                        companies_list.append({
+                            "customer_number": cust_no,
+                            "name": ss["name"],
+                            "status": "IGNORED",
+                            "status_label": "Genegeerd voor HubSpot",
+                            "status_badge": "badge-secondary",
+                            "silvasoft": ss,
+                            "hubspot": None,
+                            "diffs": [],
+                            "contacts_diff": [],
+                            "identical_fields": [],
+                            "identical_contacts": [],
+                            "ignored_contacts": [],
+                            "pending_fields": [],
+                            "pending_contacts": [],
+                            "pending_count": 0,
+                            "identical_count": 0
+                        })
+                    continue
+
                 stats["new_in_silvasoft"] += 1
                 if filter_type in ("all", "new_in_silvasoft"):
                     companies_list.append({
