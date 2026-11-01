@@ -1,4 +1,6 @@
 import re
+import json
+import difflib
 import datetime
 import logging
 from typing import List, Dict, Any, Optional
@@ -6,6 +8,11 @@ from app.config import Config
 from app.database import get_db
 
 logger = logging.getLogger("zwol_sync")
+
+GENERIC_EMAIL_DOMAINS = {
+    "gmail.com", "hotmail.com", "outlook.com", "live.nl", "live.com",
+    "yahoo.com", "icloud.com", "me.com", "msn.com"
+}
 
 
 def normalize_zip(val: str) -> str:
@@ -18,10 +25,23 @@ def normalize_name(val: str) -> str:
     if not val:
         return ""
     s = val.lower()
+    # Strip web TLDs (bijv. bier-online.nl -> bier-online)
+    s = re.sub(r"\.(nl|com|org|net|eu|be|online|shop|info)\b", "", s)
+    # Strip rechtsvormen en algemene horeca termen
     for drop in ["b.v.", "bv", "v.o.f.", "vof", "stichting", "biercafé", "biercafe", "café", "cafe", "brouwerij", "restaurant"]:
         s = re.sub(r"\b" + re.escape(drop) + r"\b", "", s)
     s = re.sub(r"[^a-z0-9]", "", s)
     return s.strip()
+
+
+def normalize_city(val: str) -> str:
+    if not val:
+        return ""
+    s = val.lower().strip()
+    s = re.sub(r"^'s[\s-]?", "", s)
+    for drop in ["aan den rijn", "aan de rijn", "den", "der", "de", "het", "aan zee"]:
+        s = re.sub(r"\b" + re.escape(drop) + r"\b", "", s)
+    return re.sub(r"[^a-z0-9]", "", s).strip()
 
 
 def extract_domain(url_or_email: str) -> str:
@@ -58,6 +78,7 @@ class MatchingService:
             hs_by_kvk = {}
             hs_by_zippad = {}
             hs_by_domain = {}
+            hs_by_email = {}
 
             for h in hs_companies:
                 hid = str(h["hubspot_id"])
@@ -70,16 +91,34 @@ class MatchingService:
                     hs_by_kvk[kvk] = hid
 
                 z = normalize_zip(h.get("postal_code") or "")
-                # Probeer huisnummer uit adres te vissen
                 street = h.get("street") or ""
                 num_match = re.search(r"\b(\d+)\b", street)
                 unit = num_match.group(1) if num_match else ""
                 if z and unit:
                     hs_by_zippad[f"{z}_{unit}"] = hid
 
+                # Bedrijfswebsite en domein
                 dom = extract_domain(h.get("website") or h.get("domain") or "")
-                if dom and len(dom) > 4:
+                if dom and len(dom) > 4 and dom not in GENERIC_EMAIL_DOMAINS:
                     hs_by_domain[dom] = hid
+
+                # Bedrijfs- en contactpersoon e-mails
+                raw = json.loads(h.get("raw_json") or "{}")
+                comp_email = (raw.get("properties", {}).get("email") or "").lower().strip()
+                if comp_email and "@" in comp_email:
+                    hs_by_email[comp_email] = hid
+                    c_dom = extract_domain(comp_email)
+                    if c_dom and len(c_dom) > 4 and c_dom not in GENERIC_EMAIL_DOMAINS:
+                        hs_by_domain[c_dom] = hid
+
+                cts = json.loads(h.get("contacts_json") or "[]")
+                for c in cts:
+                    em = (c.get("email") or "").lower().strip()
+                    if em and "@" in em:
+                        hs_by_email[em] = hid
+                        c_dom = extract_domain(em)
+                        if c_dom and len(c_dom) > 4 and c_dom not in GENERIC_EMAIL_DOMAINS:
+                            hs_by_domain[c_dom] = hid
 
             new_matches_count = 0
 
@@ -121,32 +160,81 @@ class MatchingService:
                                 method = "postcode_huisnummer"
                                 score = 95
 
-                # 4. Domein match
+                # 4. Exact Contactpersoon / Bedrijfs e-mail match
                 if not target_hs_id:
-                    s_dom = extract_domain(s.get("website") or s.get("email") or "")
-                    if s_dom and len(s_dom) > 4 and s_dom in hs_by_domain:
-                        candidate_id = hs_by_domain[s_dom]
-                        if candidate_id not in matched_hs_ids:
-                            target_hs_id = candidate_id
-                            method = "domain"
-                            score = 90
+                    s_emails = set()
+                    if s.get("email"):
+                        s_emails.add(s["email"].lower().strip())
+                    s_cts = json.loads(s.get("contacts_json") or "[]")
+                    for c in s_cts:
+                        if c.get("email"):
+                            s_emails.add(c["email"].lower().strip())
 
-                # 5. Fuzzy naam + plaats match
+                    for em in s_emails:
+                        if em in hs_by_email:
+                            candidate_id = hs_by_email[em]
+                            if candidate_id not in matched_hs_ids:
+                                target_hs_id = candidate_id
+                                method = f"email_{em.split('@')[-1]}"
+                                score = 95
+                                break
+
+                # 5. Domein match (bedrijfsdomein of contactpersoondomein)
+                if not target_hs_id:
+                    s_doms = set()
+                    for em in s_emails:
+                        d = extract_domain(em)
+                        if d and len(d) > 4 and d not in GENERIC_EMAIL_DOMAINS:
+                            s_doms.add(d)
+                    if s.get("website"):
+                        d = extract_domain(s["website"])
+                        if d and len(d) > 4 and d not in GENERIC_EMAIL_DOMAINS:
+                            s_doms.add(d)
+
+                    for d in s_doms:
+                        if d in hs_by_domain:
+                            candidate_id = hs_by_domain[d]
+                            if candidate_id not in matched_hs_ids:
+                                target_hs_id = candidate_id
+                                method = "domain"
+                                score = 90
+                                break
+
+                # 6. Exacte genormaliseerde naam (+ optioneel plaats match)
                 if not target_hs_id:
                     s_norm_name = normalize_name(s.get("name") or "")
-                    s_city = (s.get("city") or "").lower().strip()
+                    s_city = normalize_city(s.get("city") or "")
                     if len(s_norm_name) >= 4:
                         for h in hs_companies:
                             hid = str(h["hubspot_id"])
                             if hid in matched_hs_ids:
                                 continue
                             h_norm_name = normalize_name(h.get("name") or "")
-                            h_city = (h.get("city") or "").lower().strip()
+                            h_city = normalize_city(h.get("city") or "")
                             if s_norm_name == h_norm_name and (not s_city or not h_city or s_city == h_city):
                                 target_hs_id = hid
-                                method = "name_fuzzy"
-                                score = 85
+                                method = "name_exact"
+                                score = 88
                                 break
+
+                # 7. Fuzzy naam + plaats match
+                if not target_hs_id:
+                    s_norm_name = normalize_name(s.get("name") or "")
+                    s_city = normalize_city(s.get("city") or "")
+                    if len(s_norm_name) >= 5 and s_city:
+                        for h in hs_companies:
+                            hid = str(h["hubspot_id"])
+                            if hid in matched_hs_ids:
+                                continue
+                            h_norm_name = normalize_name(h.get("name") or "")
+                            h_city = normalize_city(h.get("city") or "")
+                            if s_city and h_city and s_city == h_city:
+                                ratio = difflib.SequenceMatcher(None, s_norm_name, h_norm_name).ratio()
+                                if ratio >= 0.88:
+                                    target_hs_id = hid
+                                    method = f"name_fuzzy_{int(ratio*100)}"
+                                    score = 80
+                                    break
 
                 if target_hs_id and target_hs_id not in matched_hs_ids:
                     db.execute(f"""
