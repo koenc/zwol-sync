@@ -117,6 +117,10 @@ class QueueService:
                 elif action == "ADD_CONTACT":
                     hubspot_client.create_and_associate_contact(entity_id, payload)
 
+                elif action == "UPDATE_CONTACT_PHONE":
+                    hubspot_client.update_contact(entity_id, {"phone": new_val})
+
+
             elif target == "SILVASOFT":
                 if action == "UPDATE_FIELD":
                     # Update in Silvasoft

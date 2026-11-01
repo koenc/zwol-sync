@@ -199,17 +199,40 @@ class DiffService:
         }
 
     def _compare_contacts(self, ss_contacts: List[Dict], hs_contacts: List[Dict]) -> List[Dict]:
-        """Vergelijkt contactpersonen op e-mail en naam."""
+        """Vergelijkt contactpersonen op e-mail en naam, met deduplicatie."""
         diffs = []
+
+        # 1. Schoon Silvasoft contacten op (geen facturatie-afdelingen en ontdubbelen)
+        clean_ss = []
+        seen_ss = set()
+        for sc in ss_contacts:
+            s_name = (sc.get("name") or "").strip()
+            if not s_name or "administratie" in s_name.lower():
+                continue
+            key = sc.get("guid") or sc.get("email") or s_name.lower()
+            if key not in seen_ss:
+                seen_ss.add(key)
+                clean_ss.append(sc)
+
+        # 2. Ontdubbel HubSpot contacten op ID
+        clean_hs = []
+        seen_hs_ids = set()
+        for hc in hs_contacts:
+            cid = str(hc.get("id") or "")
+            if not cid or cid in seen_hs_ids:
+                continue
+            seen_hs_ids.add(cid)
+            clean_hs.append(hc)
+
         matched_hs_ids = set()
 
-        for sc in ss_contacts:
+        for sc in clean_ss:
             s_mail = (sc.get("email") or "").lower().strip()
             s_name = (sc.get("name") or "").lower().strip()
 
             # Zoek match in HubSpot
             match_hc = None
-            for hc in hs_contacts:
+            for hc in clean_hs:
                 h_mail = (hc.get("email") or "").lower().strip()
                 h_name = (hc.get("name") or "").lower().strip()
                 if s_mail and h_mail and s_mail == h_mail:
@@ -220,18 +243,19 @@ class DiffService:
                     break
 
             if match_hc:
-                matched_hs_ids.add(match_hc.get("id"))
+                matched_hs_ids.add(str(match_hc.get("id")))
                 # Vergelijk telefoonnummer
                 s_ph = clean_phone(sc.get("phone"))
                 h_ph = clean_phone(match_hc.get("phone"))
                 if s_ph != h_ph and (s_ph or h_ph):
                     diffs.append({
                         "type": "CONTACT_PHONE_DIFF",
-                        "contact_name": sc.get("name"),
-                        "contact_email": sc.get("email"),
+                        "contact_name": sc.get("name") or match_hc.get("name"),
+                        "contact_email": sc.get("email") or match_hc.get("email"),
                         "silvasoft": sc.get("phone") or "(leeg)",
                         "hubspot": match_hc.get("phone") or "(leeg)",
-                        "hs_contact_id": match_hc.get("id")
+                        "hs_contact_id": str(match_hc.get("id")),
+                        "ss_contact_guid": str(sc.get("guid") or "")
                     })
             else:
                 # Staat alleen in Silvasoft
@@ -240,21 +264,22 @@ class DiffService:
                     "contact_name": sc.get("name"),
                     "contact_email": sc.get("email"),
                     "contact_phone": sc.get("phone"),
-                    "silvasoft": f"{sc.get('name')} ({sc.get('email') or 'geen mail'})",
+                    "silvasoft": sc.get("name"),
                     "hubspot": "Niet aanwezig in HubSpot"
                 })
 
         # Check contacten die alleen in HubSpot staan
-        for hc in hs_contacts:
-            if hc.get("id") not in matched_hs_ids:
+        for hc in clean_hs:
+            cid = str(hc.get("id") or "")
+            if cid not in matched_hs_ids:
                 diffs.append({
                     "type": "CONTACT_ONLY_IN_HUBSPOT",
                     "contact_name": hc.get("name"),
                     "contact_email": hc.get("email"),
                     "contact_phone": hc.get("phone"),
                     "silvasoft": "Niet aanwezig in Silvasoft",
-                    "hubspot": f"{hc.get('name')} ({hc.get('email') or 'geen mail'})",
-                    "hs_contact_id": hc.get("id")
+                    "hubspot": hc.get("name"),
+                    "hs_contact_id": cid
                 })
 
         return diffs

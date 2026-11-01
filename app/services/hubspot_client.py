@@ -155,12 +155,16 @@ class HubSpotClient:
                 phone = (props.get("phone") or "").strip()
                 silvasoft_cust_no = (props.get("silvasoft_customer_number") or "").strip()
 
-                # Gekoppelde contacten verzamelen
+                # Gekoppelde contacten verzamelen (ontdubbeld op contact ID)
                 contact_list = []
+                seen_cids = set()
                 primary_name = primary_email = primary_phone = ""
                 assocs = c.get("associations", {}).get("contacts", {}).get("results", [])
                 for a in assocs:
                     cid = str(a.get("id"))
+                    if not cid or cid in seen_cids:
+                        continue
+                    seen_cids.add(cid)
                     c_data = contacts_by_id.get(cid)
                     if c_data:
                         c_props = c_data.get("properties") or {}
@@ -306,6 +310,14 @@ class HubSpotClient:
         resp = self._request_with_retry("POST", url, json=payload)
         resp.raise_for_status()
         return resp.json()
+
+    def update_contact(self, contact_id: str, properties: Dict[str, str]) -> Dict[str, Any]:
+        """Werkt eigenschappen van een contactpersoon bij in HubSpot."""
+        url = f"{self.BASE_URL}/crm/v3/objects/contacts/{contact_id}"
+        resp = self._request_with_retry("PATCH", url, json={"properties": properties})
+        resp.raise_for_status()
+        return resp.json()
+
 
 
 hubspot_client = HubSpotClient()

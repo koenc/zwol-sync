@@ -151,6 +151,38 @@ async function addContactToHubspot(companyId, name, email, phone) {
 }
 
 // --------------------------------------------------------------------------
+
+async function syncContactPhone(target, entityId, newVal, oldVal) {
+  if (target === 'HUBSPOT') {
+    if (!confirm('Wil je het telefoonnummer in HubSpot bijwerken naar ' + (newVal || '(leeg)') + '?')) return;
+    try {
+      const res = await fetch('/api/queue/apply-field', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'HUBSPOT',
+          action: 'UPDATE_CONTACT_PHONE',
+          entity_id: entityId,
+          field_name: 'phone',
+          new_value: newVal,
+          old_value: oldVal
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast('Fout: ' + data.error, 'error');
+      }
+    } catch (err) {
+      showToast('Fout: ' + err.message, 'error');
+    }
+  } else {
+    showToast('Contactpersoon telefoonnummers naar Silvasoft kunnen in Silvasoft worden aangepast.', 'info');
+  }
+}
+
 // HANDMATIG KOPPELEN (MODAL)
 // --------------------------------------------------------------------------
 

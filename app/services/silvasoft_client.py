@@ -137,6 +137,10 @@ class SilvasoftClient:
 
                 if raw_contacts and isinstance(raw_contacts, list):
                     for c in raw_contacts:
+                        # Afdelingen zoals 'Financiële administratie' overslaan als contactpersoon
+                        if c.get("TypeContact") == "department":
+                            continue
+
                         c_first = (c.get("FirstName") or "").strip()
                         c_prep = (c.get("Preposition") or c.get("Prefix") or "").strip()
                         c_last = (c.get("LastName") or c.get("FamilyName") or "").strip()
