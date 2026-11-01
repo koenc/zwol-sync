@@ -365,18 +365,19 @@ def api_create_in_hubspot():
     if ss.get("unit_appendix"):
         street_combined = f"{street_combined}{ss.get('unit_appendix')}".strip()
 
-    payload = {
+    raw_payload = {
         "name": ss.get("name") or "",
         "address": street_combined,
         "zip": ss.get("postal_code") or "",
         "city": ss.get("city") or "",
         "phone": ss.get("phone") or "",
         "website": ss.get("website") or "",
-        "silvasoft_customer_number": str(cust_no),
-        "silvasoft_sync_status": "Actieve Klant"
+        "silvasoft_customer_number": str(cust_no)
     }
     if ss.get("kvk_number"):
-        payload["kvk_nummer"] = ss.get("kvk_number")
+        raw_payload["kvk_nummer"] = ss.get("kvk_number")
+
+    payload = {k: str(v).strip() for k, v in raw_payload.items() if v is not None and str(v).strip() != ""}
 
     try:
         task_id = QueueService.enqueue(

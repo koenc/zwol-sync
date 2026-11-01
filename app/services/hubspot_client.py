@@ -30,7 +30,6 @@ class HubSpotClient:
         "kvk_nummer",
         "kvk",
         "silvasoft_customer_number",
-        "silvasoft_sync_status",
         "createdate",
         "hs_lastmodifieddate"
     ]
@@ -316,27 +315,31 @@ class HubSpotClient:
     def create_company(self, properties: Dict[str, str]) -> Dict[str, Any]:
         """Maakt een nieuw bedrijf aan in HubSpot."""
         url = f"{self.BASE_URL}/crm/v3/objects/companies"
-        resp = self._request_with_retry("POST", url, json={"properties": properties})
+        clean_props = {k: str(v).strip() for k, v in properties.items() if v is not None and str(v).strip() != ""}
+        resp = self._request_with_retry("POST", url, json={"properties": clean_props})
         resp.raise_for_status()
         return resp.json()
 
     def create_and_associate_contact(self, company_id: str, contact_data: Dict[str, str]) -> Dict[str, Any]:
         """Maakt een contactpersoon aan en koppelt deze direct aan het bedrijf. Als contact al bestaat (409), koppel bestaand contact."""
         url = f"{self.BASE_URL}/crm/v3/objects/contacts"
+        raw_props = {
+            "firstname": contact_data.get("first_name", ""),
+            "lastname": contact_data.get("last_name", ""),
+            "email": contact_data.get("email", ""),
+            "phone": contact_data.get("phone", "")
+        }
+        clean_props = {k: str(v).strip() for k, v in raw_props.items() if v is not None and str(v).strip() != ""}
+
         payload = {
-            "properties": {
-                "firstname": contact_data.get("first_name", ""),
-                "lastname": contact_data.get("last_name", ""),
-                "email": contact_data.get("email", ""),
-                "phone": contact_data.get("phone", "")
-            },
+            "properties": clean_props,
             "associations": [
                 {
                     "to": {"id": company_id},
                     "types": [
                         {
                             "associationCategory": "HUBSPOT_DEFINED",
-                            "associationTypeId": 2  # contact_to_company
+                            "associationTypeId": 1  # Primary contact_to_company (typeId 1)
                         }
                     ]
                 }

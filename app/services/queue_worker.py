@@ -130,6 +130,27 @@ class QueueService:
                     if new_hs_id:
                         from app.services.matching_service import matching_service
                         matching_service.manual_match(entity_id, str(new_hs_id))
+
+                        # Koppel eventuele contactpersonen uit Silvasoft direct aan het nieuwe bedrijf
+                        with get_db() as db:
+                            ss = db.fetchone(f"SELECT contacts_json FROM {prefix}silvasoft_cache WHERE customer_number = %s", (str(entity_id),))
+                        if ss and ss.get("contacts_json"):
+                            try:
+                                for ct in json.loads(ss["contacts_json"] or "[]"):
+                                    c_email = (ct.get("email") or "").strip()
+                                    c_first = (ct.get("first_name") or "").strip()
+                                    c_last = (ct.get("last_name") or "").strip()
+                                    c_ph = (ct.get("phone") or "").strip()
+                                    if c_email or c_first or c_last:
+                                        hubspot_client.create_and_associate_contact(str(new_hs_id), {
+                                            "first_name": c_first,
+                                            "last_name": c_last,
+                                            "email": c_email,
+                                            "phone": c_ph
+                                        })
+                            except Exception as e_c:
+                                logger.warning(f"Kon contactpersoon niet koppelen aan nieuw bedrijf #{new_hs_id}: {e_c}")
+
                         hubspot_client.sync_companies_to_cache()
 
                 elif action == "ADD_CONTACT":
