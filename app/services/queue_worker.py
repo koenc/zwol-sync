@@ -495,7 +495,7 @@ class QueueService:
             recent_done = db.fetchall(f"""
                 SELECT * FROM {prefix}queue
                 WHERE status IN ('SUCCESS', 'FAILED')
-                ORDER BY id DESC LIMIT 10
+                ORDER BY COALESCE(processed_at, created_at) DESC, id DESC LIMIT 25
             """)
             ss_count = sum(1 for p in pending if p.get("target") == "SILVASOFT")
             hs_count = sum(1 for p in pending if p.get("target") == "HUBSPOT")
