@@ -136,7 +136,13 @@
           <tr class="diff-row diff-highlight">
             <td class="diff-field-name">{{ d.label }}</td>
             <td class="diff-val-ss">
-              <strong>{{ d.silvasoft }}</strong>
+              {% if d.field == 'website' and d.silvasoft != '(leeg)' %}
+                <a href="{% if not d.silvasoft.startswith('http') %}https://{% endif %}{{ d.silvasoft }}" target="_blank" class="hs-link">
+                  {{ d.silvasoft }} ↗
+                </a>
+              {% else %}
+                <strong>{{ d.silvasoft }}</strong>
+              {% endif %}
             </td>
             <td class="diff-actions">
               <button class="btn-action-arrow btn-to-hs"
@@ -151,7 +157,13 @@
               </button>
             </td>
             <td class="diff-val-hs">
-              <strong>{{ d.hubspot }}</strong>
+              {% if d.field == 'website' and d.hubspot != '(leeg)' %}
+                <a href="{% if not d.hubspot.startswith('http') %}https://{% endif %}{{ d.hubspot }}" target="_blank" class="hs-link">
+                  {{ d.hubspot }} ↗
+                </a>
+              {% else %}
+                <strong>{{ d.hubspot }}</strong>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -162,6 +174,10 @@
             <td class="diff-field-name">
               {% if cd.type == 'CONTACT_PHONE_DIFF' %}
                 👤 Tel: <strong>{{ cd.contact_name }}</strong>
+              {% elif cd.type == 'CONTACT_EMAIL_DIFF' %}
+                👤 E-mail: <strong>{{ cd.contact_name }}</strong>
+              {% elif cd.type == 'CONTACT_NAME_DIFF' %}
+                👤 Naam: <strong>{{ cd.contact_name }}</strong>
               {% else %}
                 👤 Contact: <strong>{{ cd.contact_name }}</strong>
               {% endif %}
@@ -187,12 +203,28 @@
                   ➔ Naar HS
                 </button>
               {% elif cd.type == 'CONTACT_ONLY_IN_HUBSPOT' %}
-                <span class="badge badge-secondary" title="HubSpot contactpersonen worden niet automatisch naar Silvasoft overgezet">Alleen in HS</span>
+                <div style="display: flex; gap: 4px; justify-content: center; align-items: center;">
+                  <button class="btn btn-xs btn-outline-primary"
+                    onclick="addContactToSilvasoft('{{ c.customer_number }}', '{{ cd.contact_name|escape }}', '{{ cd.contact_email|escape }}', '{{ cd.contact_phone|escape }}')"
+                    title="Voeg '{{ cd.contact_name }}' toe aan Silvasoft (via wachtrij)">
+                    ⬅ Naar Silvasoft
+                  </button>
+                  <button class="btn btn-xs btn-text text-muted"
+                    onclick="ignoreContact('{{ c.customer_number }}', '{{ c.hubspot_id }}', '{{ cd.hs_contact_id }}', '{{ cd.contact_name|escape }}', '{{ cd.contact_email|escape }}')"
+                    title="Negeer '{{ cd.contact_name }}' (wordt uitgesloten van verschillen)">
+                    ✕ Negeren
+                  </button>
+                </div>
               {% elif cd.type == 'CONTACT_PHONE_DIFF' %}
                 <button class="btn-action-arrow btn-to-hs"
                   onclick="syncContactPhone('HUBSPOT', '{{ cd.hs_contact_id }}', '{{ cd.silvasoft|escape }}', '{{ cd.hubspot|escape }}')"
                   title="Overschrijf telefoonnummer in HubSpot met '{{ cd.silvasoft }}'">
                   ➔
+                </button>
+                <button class="btn-action-arrow btn-to-ss"
+                  onclick="syncContactPhone('SILVASOFT', '{{ c.customer_number }}', '{{ cd.hubspot|escape }}', '{{ cd.silvasoft|escape }}', '{{ cd.ss_contact_guid }}')"
+                  title="Plaats telefoonnummer in de Silvasoft-wachtrij">
+                  ⬅
                 </button>
               {% endif %}
             </td>
@@ -219,13 +251,25 @@
               <span style="color: #10b981; font-weight: bold; margin-right: 4px;">✅</span> {{ idf.label }}
             </td>
             <td class="diff-val-ss" style="color: #475569;">
-              {{ idf.silvasoft }}
+              {% if idf.field == 'website' and idf.silvasoft != '(leeg)' %}
+                <a href="{% if not idf.silvasoft.startswith('http') %}https://{% endif %}{{ idf.silvasoft }}" target="_blank" class="hs-link">
+                  {{ idf.silvasoft }} ↗
+                </a>
+              {% else %}
+                {{ idf.silvasoft }}
+              {% endif %}
             </td>
             <td class="diff-actions" style="text-align: center;">
               <span class="badge badge-success" style="font-size: 11px; padding: 2px 6px;">Gelijk</span>
             </td>
             <td class="diff-val-hs" style="color: #475569;">
-              {{ idf.hubspot }}
+              {% if idf.field == 'website' and idf.hubspot != '(leeg)' %}
+                <a href="{% if not idf.hubspot.startswith('http') %}https://{% endif %}{{ idf.hubspot }}" target="_blank" class="hs-link">
+                  {{ idf.hubspot }} ↗
+                </a>
+              {% else %}
+                {{ idf.hubspot }}
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -243,6 +287,31 @@
             </td>
             <td class="diff-val-hs" style="color: #475569;">
               {{ idc.hubspot }}
+            </td>
+          </tr>
+          {% endfor %}
+
+          <!-- Genegeerde Contactpersonen (indien uitgesloten) -->
+          {% for ig in c.ignored_contacts %}
+          <tr class="diff-row row-identical row-identical-{{ c.customer_number }}" style="display: none; background: #fff1f2; opacity: 0.95;">
+            <td class="diff-field-name" style="color: #be123c;">
+              <span style="margin-right: 4px;">🚫</span> {{ ig.label }}
+            </td>
+            <td class="diff-val-ss" style="color: #881337; font-style: italic;">
+              {{ ig.silvasoft }}
+            </td>
+            <td class="diff-actions" style="text-align: center;">
+              <button class="btn btn-xs btn-outline"
+                onclick="unignoreContact('{{ c.customer_number }}', '{{ ig.hs_contact_id }}', '{{ ig.contact_name|escape }}')"
+                title="Herstel '{{ ig.contact_name }}' zodat het weer wordt meegenomen in de verschillen">
+                Herstellen
+              </button>
+            </td>
+            <td class="diff-val-hs" style="color: #881337;">
+              <strong>{{ ig.hubspot }}</strong>
+              {% if ig.contact_email or ig.contact_phone %}
+                <br><small class="text-muted">{{ ig.contact_email or 'geen e-mail' }} • {{ ig.contact_phone or 'geen tel' }}</small>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}

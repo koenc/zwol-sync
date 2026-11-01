@@ -153,6 +153,47 @@ def api_unmatch():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/contacts/ignore", methods=["POST"])
+def api_ignore_contact():
+    data = request.get_json() or {}
+    cust_no = str(data.get("customer_number") or "")
+    hs_id = str(data.get("hubspot_id") or "")
+    contact_id = str(data.get("contact_id") or "")
+    name = data.get("contact_name") or ""
+    email = data.get("contact_email") or ""
+
+    if not cust_no or not contact_id:
+        return jsonify({"success": False, "error": "Klantnummer en contact-ID zijn verplicht."}), 400
+
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    prefix = Config.DB_TABLE_PREFIX
+    with get_db() as db:
+        db.execute(f"""
+            INSERT INTO {prefix}ignored_contacts (customer_number, hubspot_id, contact_id, contact_name, contact_email, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE contact_name = VALUES(contact_name), contact_email = VALUES(contact_email)
+        """, (cust_no, hs_id, contact_id, name, email, now_str))
+
+    return jsonify({"success": True, "message": f"Contactpersoon '{name}' uitgesloten van synchronisatie."})
+
+
+@app.route("/api/contacts/unignore", methods=["POST"])
+def api_unignore_contact():
+    data = request.get_json() or {}
+    cust_no = str(data.get("customer_number") or "")
+    contact_id = str(data.get("contact_id") or "")
+
+    if not cust_no or not contact_id:
+        return jsonify({"success": False, "error": "Klantnummer en contact-ID zijn verplicht."}), 400
+
+    prefix = Config.DB_TABLE_PREFIX
+    with get_db() as db:
+        db.execute(f"DELETE FROM {prefix}ignored_contacts WHERE customer_number = %s AND contact_id = %s", (cust_no, contact_id))
+
+    return jsonify({"success": True, "message": "Contactpersoon hersteld voor synchronisatie."})
+
+
+
 @app.route("/api/queue/apply-field", methods=["POST"])
 def api_apply_field():
     """

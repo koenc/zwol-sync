@@ -114,38 +114,6 @@ async function createInHubspot(custNo, name) {
   }
 }
 
-async function syncContactPhone(target, entityId, newVal, oldVal) {
-  if (target === 'HUBSPOT') {
-    if (!confirm(`Wil je het telefoonnummer in HubSpot bijwerken naar '${newVal || '(leeg)'}'?`)) return;
-    try {
-      const res = await fetch('/api/queue/apply-field', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target: 'HUBSPOT',
-          action: 'UPDATE_CONTACT_PHONE',
-          entity_id: entityId,
-          field_name: 'phone',
-          new_value: newVal,
-          old_value: oldVal
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
-        setTimeout(() => location.reload(), 800);
-      } else {
-        showToast(`Fout: ${data.error}`, 'error');
-      }
-    } catch (err) {
-      showToast(`Fout: ${err.message}`, 'error');
-    }
-  } else {
-    showToast('Contactpersoon telefoonnummers naar Silvasoft kunnen in Silvasoft worden aangepast.', 'info');
-  }
-}
-
-
 // --------------------------------------------------------------------------
 // CONTACTPERSOON NAAR HUBSPOT PUSHEN
 // --------------------------------------------------------------------------
@@ -182,71 +150,7 @@ async function addContactToHubspot(companyId, name, email, phone) {
   }
 }
 
-async function syncContactPhone(target, entityId, newVal, oldVal) {
-  if (target === 'HUBSPOT') {
-    if (!confirm(`Wil je het telefoonnummer in HubSpot bijwerken naar '${newVal || '(leeg)'}'?`)) return;
-    try {
-      const res = await fetch('/api/queue/apply-field', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target: 'HUBSPOT',
-          action: 'UPDATE_CONTACT_PHONE',
-          entity_id: entityId,
-          field_name: 'phone',
-          new_value: newVal,
-          old_value: oldVal
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
-        setTimeout(() => location.reload(), 800);
-      } else {
-        showToast(`Fout: ${data.error}`, 'error');
-      }
-    } catch (err) {
-      showToast(`Fout: ${err.message}`, 'error');
-    }
-  } else {
-    showToast('Contactpersoon telefoonnummers naar Silvasoft kunnen in Silvasoft worden aangepast.', 'info');
-  }
-}
-
-
 // --------------------------------------------------------------------------
-
-async function syncContactPhone(target, entityId, newVal, oldVal) {
-  if (target === 'HUBSPOT') {
-    if (!confirm('Wil je het telefoonnummer in HubSpot bijwerken naar ' + (newVal || '(leeg)') + '?')) return;
-    try {
-      const res = await fetch('/api/queue/apply-field', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target: 'HUBSPOT',
-          action: 'UPDATE_CONTACT_PHONE',
-          entity_id: entityId,
-          field_name: 'phone',
-          new_value: newVal,
-          old_value: oldVal
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
-        setTimeout(() => location.reload(), 800);
-      } else {
-        showToast('Fout: ' + data.error, 'error');
-      }
-    } catch (err) {
-      showToast('Fout: ' + err.message, 'error');
-    }
-  } else {
-    showToast('Contactpersoon telefoonnummers naar Silvasoft kunnen in Silvasoft worden aangepast.', 'info');
-  }
-}
-
 // HANDMATIG KOPPELEN (MODAL)
 // --------------------------------------------------------------------------
 
@@ -280,19 +184,11 @@ function searchHubspotCompanies(query) {
         return;
       }
       let html = '';
-      const portalId = window.HUBSPOT_PORTAL_ID || '25230600';
       data.results.forEach(h => {
         html += `
           <div class="modal-result-item" onclick="confirmManualMatch('${currentModalSsNo}', '${h.hubspot_id}', '${escapeHtml(h.name)}')">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <strong>${escapeHtml(h.name)}</strong> 
-                <small style="color:#64748b;">(ID: ${h.hubspot_id} • ${escapeHtml(h.city || 'Geen plaats')} • KvK: ${escapeHtml(h.kvk_number || '-')})</small>
-              </div>
-              <a href="https://app-eu1.hubspot.com/contacts/${portalId}/company/${h.hubspot_id}" target="_blank" onclick="event.stopPropagation();" class="hs-link" title="Bekijk in HubSpot" style="font-size:12px;">
-                Openen ↗
-              </a>
-            </div>
+            <strong>${escapeHtml(h.name)}</strong> 
+            <small style="color:#64748b;">(ID: ${h.hubspot_id} â€¢ ${escapeHtml(h.city || 'Geen plaats')} â€¢ KvK: ${escapeHtml(h.kvk_number || '-')})</small>
           </div>
         `;
       });
@@ -325,38 +221,6 @@ async function confirmManualMatch(ssNo, hsId, hsName) {
   }
 }
 
-async function syncContactPhone(target, entityId, newVal, oldVal) {
-  if (target === 'HUBSPOT') {
-    if (!confirm(`Wil je het telefoonnummer in HubSpot bijwerken naar '${newVal || '(leeg)'}'?`)) return;
-    try {
-      const res = await fetch('/api/queue/apply-field', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target: 'HUBSPOT',
-          action: 'UPDATE_CONTACT_PHONE',
-          entity_id: entityId,
-          field_name: 'phone',
-          new_value: newVal,
-          old_value: oldVal
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
-        setTimeout(() => location.reload(), 800);
-      } else {
-        showToast(`Fout: ${data.error}`, 'error');
-      }
-    } catch (err) {
-      showToast(`Fout: ${err.message}`, 'error');
-    }
-  } else {
-    showToast('Contactpersoon telefoonnummers naar Silvasoft kunnen in Silvasoft worden aangepast.', 'info');
-  }
-}
-
-
 async function unmatch(ssNo) {
   if (!confirm(`Koppeling voor klant #${ssNo} verbreken?`)) return;
 
@@ -377,38 +241,6 @@ async function unmatch(ssNo) {
     showToast(`Fout: ${err.message}`, 'error');
   }
 }
-
-async function syncContactPhone(target, entityId, newVal, oldVal) {
-  if (target === 'HUBSPOT') {
-    if (!confirm(`Wil je het telefoonnummer in HubSpot bijwerken naar '${newVal || '(leeg)'}'?`)) return;
-    try {
-      const res = await fetch('/api/queue/apply-field', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target: 'HUBSPOT',
-          action: 'UPDATE_CONTACT_PHONE',
-          entity_id: entityId,
-          field_name: 'phone',
-          new_value: newVal,
-          old_value: oldVal
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
-        setTimeout(() => location.reload(), 800);
-      } else {
-        showToast(`Fout: ${data.error}`, 'error');
-      }
-    } catch (err) {
-      showToast(`Fout: ${err.message}`, 'error');
-    }
-  } else {
-    showToast('Contactpersoon telefoonnummers naar Silvasoft kunnen in Silvasoft worden aangepast.', 'info');
-  }
-}
-
 
 // --------------------------------------------------------------------------
 // CLIENT-SIDE FILTERING & SEARCH
@@ -472,6 +304,142 @@ function escapeHtml(text) {
 }
 
 
+// --------------------------------------------------------------------------
+// CONTACTPERSOON ACTIES & SYNCHRONISATIE
+// --------------------------------------------------------------------------
+
+async function syncContactPhone(target, entityId, newVal, oldVal, contactGuid) {
+  if (target === 'HUBSPOT') {
+    if (!confirm(`Wil je het telefoonnummer in HubSpot bijwerken naar '${newVal || '(leeg)'}'?`)) return;
+    try {
+      const res = await fetch('/api/queue/apply-field', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'HUBSPOT',
+          action: 'UPDATE_CONTACT_PHONE',
+          entity_id: entityId,
+          field_name: 'phone',
+          new_value: newVal,
+          old_value: oldVal
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Contactpersoon telefoonnummer direct bijgewerkt in HubSpot!', 'success');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(`Fout: ${data.error}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Fout: ${err.message}`, 'error');
+    }
+  } else if (target === 'SILVASOFT') {
+    if (!confirm(`Wil je het telefoonnummer '${newVal}' in Silvasoft plaatsen (via de wachtrij)?`)) return;
+    try {
+      const res = await fetch('/api/queue/apply-field', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'SILVASOFT',
+          action: 'UPDATE_CONTACT_PHONE',
+          entity_id: entityId,
+          field_name: 'phone',
+          new_value: newVal,
+          old_value: oldVal,
+          payload: { contact_guid: contactGuid }
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('In de Silvasoft-wachtrij geplaatst!', 'success');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(`Fout: ${data.error}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Fout: ${err.message}`, 'error');
+    }
+  }
+}
+
+async function addContactToSilvasoft(custNo, name, email, phone) {
+  if (!confirm(`Contactpersoon '${name}' toevoegen aan Silvasoft (via de wachtrij)?`)) return;
+  try {
+    const res = await fetch('/api/queue/apply-field', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target: 'SILVASOFT',
+        action: 'ADD_CONTACT',
+        entity_id: custNo,
+        payload: {
+          name: name,
+          email: email,
+          phone: phone
+        }
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`Contactpersoon '${name}' toegevoegd aan Silvasoft wachtrij!`, 'success');
+      setTimeout(() => location.reload(), 800);
+    } else {
+      showToast(`Fout: ${data.error}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Fout: ${err.message}`, 'error');
+  }
+}
+
+async function ignoreContact(custNo, hsId, contactId, name, email) {
+  if (!confirm(`Wil je contactpersoon '${name}' uitsluiten van synchronisatie? Het telt dan niet meer als verschil.`)) return;
+  try {
+    const res = await fetch('/api/contacts/ignore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer_number: custNo,
+        hubspot_id: hsId,
+        contact_id: contactId,
+        contact_name: name,
+        contact_email: email
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`Contactpersoon '${name}' genegeerd voor synchronisatie.`, 'info');
+      setTimeout(() => location.reload(), 600);
+    } else {
+      showToast(`Fout: ${data.error}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Fout: ${err.message}`, 'error');
+  }
+}
+
+async function unignoreContact(custNo, contactId, name) {
+  if (!confirm(`Wil je contactpersoon '${name}' weer meenemen in de synchronisatie?`)) return;
+  try {
+    const res = await fetch('/api/contacts/unignore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer_number: custNo,
+        contact_id: contactId
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`Contactpersoon '${name}' hersteld!`, 'success');
+      setTimeout(() => location.reload(), 600);
+    } else {
+      showToast(`Fout: ${data.error}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Fout: ${err.message}`, 'error');
+  }
+}
 
 function toggleAllFields(custNo) {
   const rows = document.querySelectorAll('.row-identical-' + custNo);

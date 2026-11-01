@@ -248,6 +248,19 @@ def init_db():
                 created_at TEXT NOT NULL
             );
             """)
+
+            db.execute(f"""
+            CREATE TABLE IF NOT EXISTS {prefix}ignored_contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_number TEXT NOT NULL,
+                hubspot_id TEXT NOT NULL,
+                contact_id TEXT NOT NULL,
+                contact_name TEXT,
+                contact_email TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE (customer_number, contact_id)
+            );
+            """)
         else:
             # MariaDB DDL
             db.execute(f"""
@@ -355,6 +368,19 @@ def init_db():
                 `records_count` INT DEFAULT 0,
                 `message` TEXT NULL,
                 `created_at` DATETIME NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+            db.execute(f"""
+            CREATE TABLE IF NOT EXISTS `{prefix}ignored_contacts` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `customer_number` VARCHAR(50) NOT NULL,
+                `hubspot_id` VARCHAR(50) NOT NULL,
+                `contact_id` VARCHAR(50) NOT NULL,
+                `contact_name` VARCHAR(255) NULL,
+                `contact_email` VARCHAR(255) NULL,
+                `created_at` DATETIME NOT NULL,
+                UNIQUE KEY `uq_ignored_contact` (`customer_number`, `contact_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             """)
 

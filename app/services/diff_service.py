@@ -41,6 +41,9 @@ class DiffService:
             ss_rows = db.fetchall(f"SELECT * FROM {prefix}silvasoft_cache ORDER BY CAST(customer_number AS SIGNED) ASC")
             hs_rows = db.fetchall(f"SELECT * FROM {prefix}hubspot_cache")
             matches = db.fetchall(f"SELECT * FROM {prefix}matches")
+            ignored_rows = db.fetchall(f"SELECT customer_number, contact_id FROM {prefix}ignored_contacts")
+
+        ignored_set = {(str(r["customer_number"]), str(r["contact_id"])) for r in ignored_rows}
 
         hs_by_id = {str(h["hubspot_id"]): h for h in hs_rows}
         match_by_ss = {str(m["silvasoft_customer_number"]): str(m["hubspot_id"]) for m in matches}
@@ -214,7 +217,7 @@ class DiffService:
             # Contactpersonen vergelijken
             ss_contacts = json.loads(ss.get("contacts_json") or "[]")
             hs_contacts = json.loads(hs.get("contacts_json") or "[]")
-            contacts_diff, identical_contacts = self._compare_contacts(ss_contacts, hs_contacts)
+            contacts_diff, identical_contacts, ignored_contacts = self._compare_contacts(ss_contacts, hs_contacts, cust_no, ignored_set)
 
             is_in_sync = (len(diffs) == 0 and len(contacts_diff) == 0)
 
@@ -243,7 +246,8 @@ class DiffService:
                     "contacts_diff": contacts_diff,
                     "identical_fields": identical_fields,
                     "identical_contacts": identical_contacts,
-                    "identical_count": len(identical_fields) + len(identical_contacts)
+                    "ignored_contacts": ignored_contacts,
+                    "identical_count": len(identical_fields) + len(identical_contacts) + len(ignored_contacts)
                 })
 
         return {
@@ -251,10 +255,13 @@ class DiffService:
             "companies": companies_list
         }
 
-    def _compare_contacts(self, ss_contacts: List[Dict], hs_contacts: List[Dict]):
-        """Vergelijkt contactpersonen op e-mail en naam, met deduplicatie."""
+    def _compare_contacts(self, ss_contacts: List[Dict], hs_contacts: List[Dict], cust_no: str = "", ignored_set: set = None):
+        """Vergelijkt contactpersonen op e-mail en naam, met deduplicatie en negeer-filter."""
         diffs = []
         identical_contacts = []
+        ignored_contacts = []
+        if ignored_set is None:
+            ignored_set = set()
 
         # 1. Schoon Silvasoft contacten op (geen facturatie-afdelingen en ontdubbelen)
         clean_ss = []
@@ -374,17 +381,29 @@ class DiffService:
         for hc in clean_hs:
             cid = str(hc.get("id") or "")
             if cid not in matched_hs_ids:
-                diffs.append({
-                    "type": "CONTACT_ONLY_IN_HUBSPOT",
-                    "contact_name": hc.get("name"),
-                    "contact_email": hc.get("email"),
-                    "contact_phone": hc.get("phone"),
-                    "silvasoft": "Niet aanwezig in Silvasoft",
-                    "hubspot": hc.get("name"),
-                    "hs_contact_id": cid
-                })
+                if (str(cust_no), cid) in ignored_set:
+                    ignored_contacts.append({
+                        "type": "CONTACT_IGNORED",
+                        "contact_name": hc.get("name"),
+                        "contact_email": hc.get("email"),
+                        "contact_phone": hc.get("phone"),
+                        "hs_contact_id": cid,
+                        "label": f"👤 Contact (genegeerd): {hc.get('name')}",
+                        "silvasoft": "Niet in Silvasoft (genegeerd)",
+                        "hubspot": hc.get("name")
+                    })
+                else:
+                    diffs.append({
+                        "type": "CONTACT_ONLY_IN_HUBSPOT",
+                        "contact_name": hc.get("name"),
+                        "contact_email": hc.get("email"),
+                        "contact_phone": hc.get("phone"),
+                        "silvasoft": "Niet aanwezig in Silvasoft",
+                        "hubspot": hc.get("name"),
+                        "hs_contact_id": cid
+                    })
 
-        return diffs, identical_contacts
+        return diffs, identical_contacts, ignored_contacts
 
 
 diff_service = DiffService()

@@ -178,6 +178,86 @@ class QueueService:
                                 (new_val, str(entity_id))
                             )
 
+                elif action == "UPDATE_CONTACT_PHONE":
+                    c_guid = payload.get("contact_guid")
+                    phone_val = str(new_val or "")
+                    with get_db() as db:
+                        ss = db.fetchone(
+                            f"SELECT relation_guid FROM {prefix}silvasoft_cache WHERE customer_number = %s",
+                            (str(entity_id),)
+                        )
+                    rel_guid = ss.get("relation_guid") if ss else None
+
+                    ss_payload = {
+                        "RelationGUID": int(rel_guid) if rel_guid else None,
+                        "Relation_Contact": [
+                            {
+                                "ContactGUID": str(c_guid),
+                                "Phone": phone_val
+                            }
+                        ]
+                    }
+                    silvasoft_client.update_company(str(entity_id), ss_payload)
+                    with get_db() as db:
+                        row = db.fetchone(f"SELECT contacts_json FROM {prefix}silvasoft_cache WHERE customer_number = %s", (str(entity_id),))
+                        if row:
+                            cts = json.loads(row["contacts_json"] or "[]")
+                            for ct in cts:
+                                if ct.get("guid") == str(c_guid):
+                                    ct["phone"] = phone_val
+                            db.execute(f"UPDATE {prefix}silvasoft_cache SET contacts_json = %s WHERE customer_number = %s", (json.dumps(cts), str(entity_id)))
+
+                elif action == "ADD_CONTACT":
+                    c_name = (payload.get("name") or "").strip()
+                    parts = c_name.split(" ")
+                    first_name = parts[0] if parts else ""
+                    last_name = " ".join(parts[1:]) if len(parts) > 1 else first_name
+                    c_mail = payload.get("email") or ""
+                    c_phone = payload.get("phone") or ""
+
+                    with get_db() as db:
+                        ss = db.fetchone(
+                            f"SELECT relation_guid FROM {prefix}silvasoft_cache WHERE customer_number = %s",
+                            (str(entity_id),)
+                        )
+                    rel_guid = ss.get("relation_guid") if ss else None
+
+                    ss_payload = {
+                        "RelationGUID": int(rel_guid) if rel_guid else None,
+                        "Relation_Contact": [
+                            {
+                                "FirstName": first_name,
+                                "LastName": last_name,
+                                "Email": c_mail,
+                                "Phone": c_phone,
+                                "TypeContact": "person"
+                            }
+                        ]
+                    }
+                    resp = silvasoft_client.update_company(str(entity_id), ss_payload)
+                    if resp and isinstance(resp, list) and len(resp) > 0:
+                        raw_cts = resp[0].get("Relation_Contact") or []
+                        clean = []
+                        for c in raw_cts:
+                            if c.get("TypeContact") == "department":
+                                continue
+                            c_f = (c.get("FirstName") or "").strip()
+                            c_p = (c.get("Preposition") or c.get("Prefix") or "").strip()
+                            c_l = (c.get("LastName") or c.get("FamilyName") or "").strip()
+                            fn = " ".join([p for p in [c_f, c_p, c_l] if p])
+                            clean.append({
+                                "guid": str(c.get("ContactGUID") or ""),
+                                "name": fn,
+                                "first_name": c_f,
+                                "last_name": c_l,
+                                "email": (c.get("Email") or "").strip(),
+                                "phone": (c.get("Phone") or c.get("Mobile") or "").strip(),
+                                "is_primary": bool(c.get("DefaultContact"))
+                            })
+                        with get_db() as db:
+                            db.execute(f"UPDATE {prefix}silvasoft_cache SET contacts_json = %s WHERE customer_number = %s", (json.dumps(clean), str(entity_id)))
+
+
             # Succes registreren
             with get_db() as db:
                 db.execute(f"""
