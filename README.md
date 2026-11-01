@@ -54,7 +54,12 @@ git clone https://github.com/koenc/zwol-sync.git
 cd zwol-sync
 ```
 
-### 2. `.env` configureren
+### 2. Mappen & `.env` configureren
+Zorg dat de data- en logmappen bestaan:
+```bash
+mkdir -p data logs
+```
+
 Kopieer `.env.example` naar `.env`:
 ```bash
 cp .env.example .env

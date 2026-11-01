@@ -15,7 +15,9 @@ venv/
 *.db
 *.sqlite
 *.sqlite3
-data/
+data/*.db
+data/*.sqlite*
+!data/.gitkeep
 
 # IDE / OS
 .vscode/
@@ -25,6 +27,7 @@ Thumbs.db
 
 # Logs
 *.log
-logs/
+logs/*.log
+!logs/.gitkeep
 scratch/
 
