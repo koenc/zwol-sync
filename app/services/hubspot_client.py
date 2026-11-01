@@ -138,6 +138,8 @@ class HubSpotClient:
             for opt in options:
                 val = str(opt.get("value") or "").strip()
                 lbl = str(opt.get("label") or "").strip()
+                if val == "OTHER":
+                    lbl = "Anders"
                 hidden = 1 if opt.get("hidden") else 0
                 display_order = int(opt.get("displayOrder") or 0)
                 if not val:
@@ -189,12 +191,19 @@ class HubSpotClient:
                         ORDER BY display_order ASC, type_label ASC
                     """)
                     if rows:
-                        return [{"value": r["type_value"], "label": r["type_label"]} for r in rows]
+                        return [
+                            {"value": r["type_value"], "label": "Anders" if r["type_value"] == "OTHER" else r["type_label"]}
+                            for r in rows
+                        ]
             except Exception as e:
                 logger.warning(f"Fout bij uitlezen hubspot_company_types uit DB: {e}")
 
         try:
-            return self.fetch_and_cache_company_type_options()
+            opts = self.fetch_and_cache_company_type_options()
+            for o in opts:
+                if o.get("value") == "OTHER":
+                    o["label"] = "Anders"
+            return opts
         except Exception as e:
             logger.error(f"Fout bij ophalen bedrijfstypen uit HubSpot: {e}")
             return []
@@ -202,7 +211,9 @@ class HubSpotClient:
     def get_company_type_labels_map(self) -> Dict[str, str]:
         """Geeft een mapping dict {type_value: type_label} terug."""
         options = self.get_company_type_options()
-        return {opt["value"]: opt["label"] for opt in options}
+        m = {opt["value"]: opt["label"] for opt in options}
+        m["OTHER"] = "Anders"
+        return m
 
     def sync_companies_to_cache(self) -> int:
         """Haalt alle bedrijven en hun gekoppelde contacten op uit HubSpot en slaat ze op in sync_hubspot_cache."""

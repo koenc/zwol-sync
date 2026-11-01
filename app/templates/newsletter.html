@@ -138,7 +138,12 @@
           <div class="type-badge-wrapper"
                onclick="startEditType('{{ c.company_id }}', '{{ c.company_type }}', '{{ c.company_type_label | escape }}', this)"
                title="Klik om bedrijfstype aan te passen">
-            {% if c.has_type %}
+            {% if c.company_type == 'OTHER' or c.company_type_label == 'Anders' %}
+              <span class="badge-warning-soft text-xs badge-editable"
+                    title="Staat op 'Anders'. Klik om een specifiek type toe te wijzen!">
+                ⚠️ Anders <span class="edit-icon">✏️</span>
+              </span>
+            {% elif c.has_type %}
               <span class="badge-outline badge-editable">
                 {{ c.company_type_label }} <span class="edit-icon">✏️</span>
               </span>
@@ -263,7 +268,9 @@ function escapeHtml(str) {
 }
 
 function renderTypeBadgeHtml(typeVal, typeLabel, hasType) {
-  if (hasType && typeVal) {
+  if (typeVal === 'OTHER' || typeLabel === 'Anders') {
+    return `<span class="badge-warning-soft text-xs badge-editable" title="Staat op 'Anders'. Klik om een specifiek type toe te wijzen!">⚠️ Anders <span class="edit-icon">✏️</span></span>`;
+  } else if (hasType && typeVal) {
     return `<span class="badge-outline badge-editable">${escapeHtml(typeLabel)} <span class="edit-icon">✏️</span></span>`;
   } else {
     return `<span class="badge-warning-soft text-xs badge-editable" title="Geen bedrijfstype ingesteld. Klik om toe te wijzen!">⚠️ Geen type <span class="edit-icon">✏️</span></span>`;
