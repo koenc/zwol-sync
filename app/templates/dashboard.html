@@ -97,11 +97,11 @@
       <div class="card-actions">
         {% if c.status == 'NEW_IN_SILVASOFT' %}
         <button class="btn btn-primary btn-sm"
-          onclick="createInHubspot('{{ c.customer_number }}', '{{ c.name|escape }}')">
+          data-cust-no="{{ c.customer_number }}" data-name="{{ c.name }}" onclick="createInHubspot(this.dataset.custNo, this.dataset.name)">
           ➕ Aanmaken in HubSpot
         </button>
         <button class="btn btn-outline btn-sm"
-          onclick="openManualMatch('{{ c.customer_number }}', '{{ c.name|escape }}')">
+          data-cust-no="{{ c.customer_number }}" data-name="{{ c.name }}" onclick="openManualMatch(this.dataset.custNo, this.dataset.name)">
           🔗 Handmatig Koppelen
         </button>
         {% elif c.status == 'DIFF_FOUND' or c.status == 'IN_SYNC' or c.status == 'PENDING_SYNC' %}
@@ -159,17 +159,34 @@
             </td>
             <td class="diff-actions">
               <button class="btn-action-arrow btn-to-hs"
-                onclick="syncField('HUBSPOT', '{{ c.hubspot_id }}', '{{ d.field }}', '{{ d.silvasoft|escape }}', '{{ d.hubspot|escape }}')"
+                data-target="HUBSPOT"
+                data-entity-id="{{ c.hubspot_id }}"
+                data-field="{{ d.field }}"
+                data-new-val="{{ d.silvasoft }}"
+                data-old-val="{{ d.hubspot }}"
+                onclick="handleSyncFieldClick(this)"
                 title="Overschrijf HubSpot met '{{ d.silvasoft }}'">
                 ➔
               </button>
               <button class="btn-action-arrow btn-to-ss"
-                onclick="syncField('SILVASOFT', '{{ c.customer_number }}', '{{ d.field }}', '{{ d.hubspot|escape }}', '{{ d.silvasoft|escape }}')"
+                data-target="SILVASOFT"
+                data-entity-id="{{ c.customer_number }}"
+                data-field="{{ d.field }}"
+                data-new-val="{{ d.hubspot }}"
+                data-old-val="{{ d.silvasoft }}"
+                onclick="handleSyncFieldClick(this)"
                 title="Plaats in Silvasoft-wachtrij met '{{ d.hubspot }}'">
                 ⬅
               </button>
               <button class="btn-action-arrow btn-edit-val"
-                onclick="openCustomValueModal('{{ c.customer_number }}', '{{ c.hubspot_id }}', '{{ d.field }}', '{{ d.label|escape }}', '{{ d.silvasoft|escape }}', '{{ d.hubspot|escape }}', '{{ c.name|escape }}')"
+                data-cust-no="{{ c.customer_number }}"
+                data-hs-id="{{ c.hubspot_id }}"
+                data-field="{{ d.field }}"
+                data-label="{{ d.label }}"
+                data-ss-val="{{ d.silvasoft }}"
+                data-hs-val="{{ d.hubspot }}"
+                data-comp-name="{{ c.name }}"
+                onclick="handleCustomValueClick(this)"
                 title="Handmatig een nieuwe waarde invoeren">
                 ✏️
               </button>
@@ -219,7 +236,7 @@
             <td class="diff-actions">
               {% if cd.type == 'CONTACT_ONLY_IN_SILVASOFT' %}
                 <button class="btn btn-xs btn-primary"
-                  onclick="addContactToHubspot('{{ c.hubspot_id }}', '{{ cd.contact_name|escape }}', '{{ cd.contact_email|escape }}', '{{ cd.contact_phone|escape }}')">
+                  data-hs-id="{{ c.hubspot_id }}" data-name="{{ cd.contact_name }}" data-email="{{ cd.contact_email }}" data-phone="{{ cd.contact_phone }}" onclick="addContactToHubspot(this.dataset.hsId, this.dataset.name, this.dataset.email, this.dataset.phone)">
                   ➔ Naar HS
                 </button>
               {% elif cd.type == 'CONTACT_ONLY_IN_HUBSPOT' %}
@@ -230,30 +247,30 @@
                     </span>
                   {% else %}
                     <button class="btn btn-xs btn-outline-primary"
-                      onclick="addContactToSilvasoft('{{ c.customer_number }}', '{{ cd.contact_name|escape }}', '{{ cd.contact_email|escape }}', '{{ cd.contact_phone|escape }}')"
+                      data-cust-no="{{ c.customer_number }}" data-name="{{ cd.contact_name }}" data-email="{{ cd.contact_email }}" data-phone="{{ cd.contact_phone }}" onclick="addContactToSilvasoft(this.dataset.custNo, this.dataset.name, this.dataset.email, this.dataset.phone)"
                       title="Voeg '{{ cd.contact_name }}' toe aan Silvasoft (via wachtrij)">
                       ⬅ Naar Silvasoft
                     </button>
                   {% endif %}
                   <button class="btn btn-xs btn-text text-muted"
-                    onclick="ignoreContact('{{ c.customer_number }}', '{{ c.hubspot_id }}', '{{ cd.hs_contact_id }}', '{{ cd.contact_name|escape }}', '{{ cd.contact_email|escape }}')"
+                    data-cust-no="{{ c.customer_number }}" data-hs-id="{{ c.hubspot_id }}" data-hs-cid="{{ cd.hs_contact_id }}" data-name="{{ cd.contact_name }}" data-email="{{ cd.contact_email }}" onclick="ignoreContact(this.dataset.custNo, this.dataset.hsId, this.dataset.hsCid, this.dataset.name, this.dataset.email)"
                     title="Negeer '{{ cd.contact_name }}' (wordt uitgesloten van verschillen)">
                     ✕ Negeren
                   </button>
                 </div>
               {% elif cd.type == 'CONTACT_PHONE_DIFF' %}
                 <button class="btn-action-arrow btn-to-hs"
-                  onclick="syncContactPhone('HUBSPOT', '{{ cd.hs_contact_id }}', '{{ cd.silvasoft|escape }}', '{{ cd.hubspot|escape }}')"
+                  data-target="HUBSPOT" data-entity-id="{{ cd.hs_contact_id }}" data-new-val="{{ cd.silvasoft }}" data-old-val="{{ cd.hubspot }}" onclick="syncContactPhone(this.dataset.target, this.dataset.entityId, this.dataset.newVal, this.dataset.oldVal)"
                   title="Overschrijf telefoonnummer in HubSpot met '{{ cd.silvasoft }}'">
                   ➔
                 </button>
                 <button class="btn-action-arrow btn-to-ss"
-                  onclick="syncContactPhone('SILVASOFT', '{{ c.customer_number }}', '{{ cd.hubspot|escape }}', '{{ cd.silvasoft|escape }}', '{{ cd.ss_contact_guid }}')"
+                  data-target="SILVASOFT" data-entity-id="{{ c.customer_number }}" data-new-val="{{ cd.hubspot }}" data-old-val="{{ cd.silvasoft }}" data-cguid="{{ cd.ss_contact_guid }}" onclick="syncContactPhone(this.dataset.target, this.dataset.entityId, this.dataset.newVal, this.dataset.oldVal, this.dataset.cguid)"
                   title="Plaats telefoonnummer in de Silvasoft-wachtrij">
                   ⬅
                 </button>
                 <button class="btn-action-arrow btn-edit-val"
-                  onclick="openCustomContactPhoneModal('{{ c.customer_number }}', '{{ c.hubspot_id }}', '{{ cd.hs_contact_id }}', '{{ cd.ss_contact_guid }}', '{{ cd.contact_name|escape }}', '{{ cd.silvasoft|escape }}', '{{ cd.hubspot|escape }}', '{{ c.name|escape }}')"
+                  data-cust-no="{{ c.customer_number }}" data-hs-id="{{ c.hubspot_id }}" data-hs-cid="{{ cd.hs_contact_id }}" data-ss-cguid="{{ cd.ss_contact_guid }}" data-cname="{{ cd.contact_name }}" data-ss-val="{{ cd.silvasoft }}" data-hs-val="{{ cd.hubspot }}" data-comp-name="{{ c.name }}" onclick="handleCustomContactPhoneClick(this)"
                   title="Handmatig een nieuw telefoonnummer invoeren">
                   ✏️
                 </button>
@@ -378,7 +395,7 @@
             </td>
             <td class="diff-actions" style="text-align: center;">
               <button class="btn btn-xs btn-outline"
-                onclick="unignoreContact('{{ c.customer_number }}', '{{ ig.hs_contact_id }}', '{{ ig.contact_name|escape }}')"
+                data-cust-no="{{ c.customer_number }}" data-hs-cid="{{ ig.hs_contact_id }}" data-name="{{ ig.contact_name }}" onclick="unignoreContact(this.dataset.custNo, this.dataset.hsCid, this.dataset.name)"
                 title="Herstel '{{ ig.contact_name }}' zodat het weer wordt meegenomen in de verschillen">
                 Herstellen
               </button>

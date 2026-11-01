@@ -605,3 +605,18 @@ async function submitCustomValue(target) {
     showToast(`Fout: ${err.message}`, 'error');
   }
 }
+
+function handleSyncFieldClick(btn) {
+  const d = btn.dataset;
+  syncField(d.target, d.entityId, d.field, d.newVal, d.oldVal);
+}
+
+function handleCustomValueClick(btn) {
+  const d = btn.dataset;
+  openCustomValueModal(d.custNo, d.hsId, d.field, d.label, d.ssVal, d.hsVal, d.compName);
+}
+
+function handleCustomContactPhoneClick(btn) {
+  const d = btn.dataset;
+  openCustomContactPhoneModal(d.custNo, d.hsId, d.hsCid, d.ssCguid, d.cname, d.ssVal, d.hsVal, d.compName);
+}

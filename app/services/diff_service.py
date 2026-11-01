@@ -32,6 +32,17 @@ def clean_str(val: Any) -> str:
     return str(val).strip()
 
 
+def normalize_text(val: Any) -> str:
+    """Normaliseert tekst voor vergelijking: uniformeert quotes, apostrofs en spaties."""
+    if val is None:
+        return ""
+    s = str(val).strip()
+    s = re.sub(r"[\u2018\u2019\u0060\u00B4\u201A\u201B\u2032]", "'", s)
+    s = re.sub(r"[\u201C\u201D\u201E\u201F\u2033]", '"', s)
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
 class DiffService:
     def get_comparison_data(self, filter_type: str = "all") -> Dict[str, Any]:
         """
@@ -143,7 +154,7 @@ class DiffService:
             # 1. Bedrijfsnaam
             ss_name = clean_str(ss.get("name"))
             hs_name = clean_str(hs.get("name"))
-            check_field_diff("name", "Bedrijfsnaam", ss_name, hs_name, ss_name.lower() == hs_name.lower())
+            check_field_diff("name", "Bedrijfsnaam", ss_name, hs_name, normalize_text(ss_name).lower() == normalize_text(hs_name).lower())
 
             # 2. KvK
             ss_kvk = clean_str(ss.get("kvk_number"))
@@ -157,7 +168,7 @@ class DiffService:
             if ss.get("unit_appendix"):
                 ss_street = f"{ss_street}{clean_str(ss.get('unit_appendix'))}".strip()
             hs_street = clean_str(hs.get("street"))
-            check_field_diff("street", "Straat & Huisnummer", ss_street, hs_street, ss_street.lower() == hs_street.lower() or (not ss_street and not hs_street))
+            check_field_diff("street", "Straat & Huisnummer", ss_street, hs_street, normalize_text(ss_street).lower() == normalize_text(hs_street).lower() or (not ss_street and not hs_street))
 
             # 4. Postcode
             ss_zip = clean_zip(ss.get("postal_code"))
@@ -167,7 +178,7 @@ class DiffService:
             # 5. Plaats
             ss_city = clean_str(ss.get("city"))
             hs_city = clean_str(hs.get("city"))
-            check_field_diff("city", "Plaats", ss_city, hs_city, ss_city.lower() == hs_city.lower() or (not ss_city and not hs_city))
+            check_field_diff("city", "Plaats", ss_city, hs_city, normalize_text(ss_city).lower() == normalize_text(hs_city).lower() or (not ss_city and not hs_city))
 
             # 6. Telefoon
             ss_ph = clean_phone(ss.get("phone"))
@@ -300,13 +311,13 @@ class DiffService:
                 # A. Contactpersoon Naam vergelijken
                 s_nm = clean_str(sc.get("name"))
                 h_nm = clean_str(match_hc.get("name"))
-                if s_nm.lower() == h_nm.lower() and s_nm:
+                if normalize_text(s_nm).lower() == normalize_text(h_nm).lower() and s_nm:
                     identical_contacts.append({
                         "label": f"👤 Naam: {c_name}",
                         "silvasoft": s_nm,
                         "hubspot": h_nm
                     })
-                elif s_nm.lower() != h_nm.lower() and (s_nm or h_nm):
+                elif normalize_text(s_nm).lower() != normalize_text(h_nm).lower() and (s_nm or h_nm):
                     diffs.append({
                         "type": "CONTACT_NAME_DIFF",
                         "contact_name": c_name,
