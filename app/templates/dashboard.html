@@ -484,7 +484,7 @@
     {% else %}
     <!-- Alleen Silvasoft Overzicht -->
     <div class="single-overview-grid">
-      <div><strong>Adres:</strong> {{ c.silvasoft.street }} {{ c.silvasoft.unit }}, {{ c.silvasoft.postal_code }} {{
+      <div><strong>Adres:</strong> {{ c.silvasoft.formatted_address or (c.silvasoft.street ~ ' ' ~ (c.silvasoft.unit or '')) }}, {{ c.silvasoft.postal_code }} {{
         c.silvasoft.city }}</div>
       <div><strong>Telefoon:</strong> {{ c.silvasoft.phone or '-' }}</div>
       <div><strong>E-mail:</strong> {{ c.silvasoft.email or '-' }}</div>

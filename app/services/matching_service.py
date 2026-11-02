@@ -152,7 +152,9 @@ class MatchingService:
                 # 3. Postcode + Huisnummer match
                 if not target_hs_id:
                     s_z = normalize_zip(s.get("postal_code") or "")
-                    s_unit = (s.get("unit") or "").strip()
+                    s_unit_raw = (s.get("unit") or "").strip()
+                    s_num_match = re.search(r"\b(\d+)\b", s_unit_raw)
+                    s_unit = s_num_match.group(1) if s_num_match else s_unit_raw
                     if s_z and s_unit:
                         key = f"{s_z}_{s_unit}"
                         if key in hs_by_zippad:

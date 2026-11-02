@@ -390,11 +390,8 @@ def api_create_in_hubspot():
     if not ss:
         return jsonify({"success": False, "error": "Klant niet gevonden in Silvasoft cache."}), 404
 
-    street_combined = ss.get("street") or ""
-    if ss.get("unit"):
-        street_combined = f"{street_combined} {ss.get('unit')}".strip()
-    if ss.get("unit_appendix"):
-        street_combined = f"{street_combined}{ss.get('unit_appendix')}".strip()
+    from app.services.diff_service import format_silvasoft_address
+    street_combined = format_silvasoft_address(ss.get("street"), ss.get("unit"), ss.get("unit_appendix"))
 
     raw_payload = {
         "name": ss.get("name") or "",

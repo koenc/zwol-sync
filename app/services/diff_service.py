@@ -43,6 +43,47 @@ def normalize_text(val: Any) -> str:
     return s
 
 
+def format_silvasoft_address(street: Optional[str], unit: Optional[str], unit_appendix: Optional[str]) -> str:
+    """
+    Combineert Silvasoft straat, unit en unit_appendix tot een natuurlijk Nederlands adres.
+    Voorkomt dubbele toevoegingen (bijv. unit='21 a' met app='a' -> '21 a', niet '21 aa')
+    en herstelt versnipperde huisnummers uit de Silvasoft API (bijv. '36 B b' -> '36 Bb').
+    """
+    s = (street or "").strip()
+    u = (unit or "").strip()
+    app = (unit_appendix or "").strip()
+
+    if u:
+        # Silvasoft API fragmenteert samengestelde toevoegingen met spaties, bijv. '36 B b' -> '36 Bb'
+        u = re.sub(r'(\d+)\s+([A-Za-z])\s+([A-Za-z0-9]+)\b', r'\1 \2\3', u)
+
+    if u and app:
+        # Als de unit al eindigt op de toevoeging (ongeacht hoofd-/kleine letters), niet nogmaals toevoegen
+        if not u.lower().endswith(app.lower()):
+            if u[-1].isdigit() and app[0].isalnum():
+                u = f"{u}{app}"
+            else:
+                u = f"{u} {app}"
+    elif not u and app:
+        u = app
+
+    if s and u:
+        return f"{s} {u}"
+    return s or u
+
+
+def normalize_address(val: Any) -> str:
+    """Normaliseert adres voor vergelijking: verwijdert overtollige spaties tussen cijfers en letters."""
+    if val is None:
+        return ""
+    s = normalize_text(val).lower()
+    # Maak bijv. '36 bb', '36 b b' en '36bb' gelijkvormig voor vergelijking
+    s = re.sub(r'(\d+)\s+([a-z0-9])', r'\1\2', s)
+    s = re.sub(r'\s+', ' ', s)
+    return s.strip()
+
+
+
 class DiffService:
     def get_comparison_data(self, filter_type: str = "all") -> Dict[str, Any]:
         """
@@ -96,6 +137,7 @@ class DiffService:
         }
 
         for ss in ss_rows:
+            ss["formatted_address"] = format_silvasoft_address(ss.get("street"), ss.get("unit"), ss.get("unit_appendix"))
             cust_no = str(ss["customer_number"])
             hs_id = match_by_ss.get(cust_no)
             hs = hs_by_id.get(hs_id) if hs_id else None
@@ -193,13 +235,14 @@ class DiffService:
             check_field_diff("kvk_number", "KvK-nummer", ss_kvk, hs_kvk, ss_kvk == hs_kvk or (not ss_kvk and not hs_kvk))
 
             # 3. Straat & Huisnummer
-            ss_street = clean_str(ss.get("street"))
-            if ss.get("unit"):
-                ss_street = f"{ss_street} {clean_str(ss.get('unit'))}".strip()
-            if ss.get("unit_appendix"):
-                ss_street = f"{ss_street}{clean_str(ss.get('unit_appendix'))}".strip()
+            ss_street = format_silvasoft_address(ss.get("street"), ss.get("unit"), ss.get("unit_appendix"))
+            ss["formatted_address"] = ss_street
             hs_street = clean_str(hs.get("street"))
-            check_field_diff("street", "Straat & Huisnummer", ss_street, hs_street, normalize_text(ss_street).lower() == normalize_text(hs_street).lower() or (not ss_street and not hs_street))
+            is_street_equal = (
+                normalize_address(ss_street) == normalize_address(hs_street)
+                or (not ss_street and not hs_street)
+            )
+            check_field_diff("street", "Straat & Huisnummer", ss_street, hs_street, is_street_equal)
 
             # 4. Postcode
             ss_zip = clean_zip(ss.get("postal_code"))
