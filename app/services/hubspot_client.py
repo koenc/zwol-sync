@@ -481,6 +481,15 @@ class HubSpotClient:
         self._handle_error(resp)
         return resp.json()
 
+    def delete_company(self, hubspot_id: str) -> bool:
+        """Verwijdert een bedrijf uit HubSpot."""
+        url = f"{self.BASE_URL}/crm/v3/objects/companies/{hubspot_id}"
+        resp = self._request_with_retry("DELETE", url)
+        if resp.status_code in (200, 204):
+            return True
+        self._handle_error(resp)
+        return True
+
     def create_and_associate_contact(self, company_id: str, contact_data: Dict[str, str]) -> Dict[str, Any]:
         """Maakt een contactpersoon aan en koppelt deze direct aan het bedrijf. Als contact al bestaat (409), koppel bestaand contact."""
         url = f"{self.BASE_URL}/crm/v3/objects/contacts"

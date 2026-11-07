@@ -108,7 +108,7 @@
       <div class="card-actions">
         {% if c.status == 'NEW_IN_SILVASOFT' %}
         <button class="btn btn-primary btn-sm"
-          data-cust-no="{{ c.customer_number }}" data-name="{{ c.name }}" onclick="createInHubspot(this.dataset.custNo, this.dataset.name)">
+          data-cust-no="{{ c.customer_number }}" data-name="{{ c.name }}" onclick="createInHubspot(this.dataset.custNo, this.dataset.name, this)">
           ➕ Aanmaken in HubSpot
         </button>
         <button class="btn btn-outline btn-sm"

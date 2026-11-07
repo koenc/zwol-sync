@@ -1,6 +1,7 @@
 import logging
 import datetime
 import json
+import re
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from app.config import Config, load_env
 from app.database import init_db, get_db
@@ -385,6 +386,28 @@ def api_create_in_hubspot():
 
     prefix = Config.DB_TABLE_PREFIX
     with get_db() as db:
+        # 1. Controleer of klant al gekoppeld is in sync_matches
+        already_matched = db.fetchone(
+            f"SELECT hubspot_id FROM {prefix}matches WHERE silvasoft_customer_number = %s",
+            (str(cust_no),)
+        )
+        if already_matched:
+            return jsonify({
+                "success": False,
+                "error": f"Klant #{cust_no} is al gekoppeld aan HubSpot bedrijf #{already_matched['hubspot_id']}."
+            }), 400
+
+        # 2. Controleer of er al een actieve CREATE_COMPANY taak in de wachtrij staat
+        pending_task = db.fetchone(
+            f"SELECT id FROM {prefix}queue WHERE target = 'HUBSPOT' AND action = 'CREATE_COMPANY' AND entity_id = %s AND status IN ('PENDING', 'PROCESSING')",
+            (str(cust_no),)
+        )
+        if pending_task:
+            return jsonify({
+                "success": False,
+                "error": f"Aanmaken van klant #{cust_no} staat al in de wachtrij (taak #{pending_task['id']})."
+            }), 400
+
         ss = db.fetchone(f"SELECT * FROM {prefix}silvasoft_cache WHERE customer_number = %s", (str(cust_no),))
 
     if not ss:
@@ -392,6 +415,36 @@ def api_create_in_hubspot():
 
     from app.services.diff_service import format_silvasoft_address
     street_combined = format_silvasoft_address(ss.get("street"), ss.get("unit"), ss.get("unit_appendix"))
+
+    # Domeinnaam bepalen uit website of primaire contactpersoon
+    domain = None
+    def _clean_domain(val):
+        if not val:
+            return None
+        v = str(val).strip().lower()
+        if "@" in v:
+            dom = v.split("@")[-1].strip()
+        else:
+            dom = re.sub(r"^https?://", "", v)
+            dom = re.sub(r"^www\.", "", dom)
+            dom = dom.split("/")[0].split("?")[0].strip()
+        public_mail = {"gmail.com", "hotmail.com", "outlook.com", "live.nl", "yahoo.com", "icloud.com"}
+        if dom and "." in dom and dom not in public_mail:
+            return dom
+        return None
+
+    if ss.get("website"):
+        domain = _clean_domain(ss["website"])
+    if not domain and ss.get("contacts_json"):
+        try:
+            for ct in json.loads(ss["contacts_json"] or "[]"):
+                m = (ct.get("email") or "").strip()
+                d = _clean_domain(m)
+                if d:
+                    domain = d
+                    break
+        except Exception:
+            pass
 
     raw_payload = {
         "name": ss.get("name") or "",
@@ -402,6 +455,8 @@ def api_create_in_hubspot():
         "website": ss.get("website") or "",
         "silvasoft_customer_number": str(cust_no)
     }
+    if domain:
+        raw_payload["domain"] = domain
     if ss.get("kvk_number"):
         raw_payload["kvk_nummer"] = ss.get("kvk_number")
 

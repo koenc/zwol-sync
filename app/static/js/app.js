@@ -92,8 +92,14 @@ async function bulkSync(custNo, hsId, direction) {
 // AANMAKEN IN HUBSPOT
 // --------------------------------------------------------------------------
 
-async function createInHubspot(custNo, name) {
+async function createInHubspot(custNo, name, btn) {
   if (!confirm(`Weet je zeker dat je '${name}' wilt aanmaken in HubSpot?`)) return;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.originalHtml = btn.innerHTML;
+    btn.innerHTML = '⏳ Bezig met aanmaken...';
+  }
 
   showToast(`Bedrijf '${name}' wordt aangemaakt in HubSpot...`, 'info');
   try {
@@ -108,9 +114,17 @@ async function createInHubspot(custNo, name) {
       setTimeout(() => location.reload(), 1500);
     } else {
       showToast(`Fout: ${data.error}`, 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = btn.dataset.originalHtml || '➕ Aanmaken in HubSpot';
+      }
     }
   } catch (err) {
     showToast(`Fout: ${err.message}`, 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = btn.dataset.originalHtml || '➕ Aanmaken in HubSpot';
+    }
   }
 }
 
