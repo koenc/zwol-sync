@@ -231,15 +231,22 @@ class QueueService:
                             ss_payload["RelationGUID"] = rel_guid
 
                     if field == "street":
-                        m = re.match(r'^(.*?)\s+(\d+)\s*(.*)$', (new_val or "").strip())
-                        if m:
-                            s_name, unit, app = m.group(1), m.group(2), m.group(3)
+                        if payload and "Address_Street" in payload:
+                            s_name = payload["Address_Street"]
+                            unit = payload.get("Address_Unit") or ""
+                            app = payload.get("Address_UnitAppendix") or ""
                         else:
-                            s_name, unit, app = (new_val or "").strip(), "", ""
+                            m = re.match(r'^(.*?)\s+(\d+)\s*(.*)$', (new_val or "").strip())
+                            if m:
+                                s_name, unit, app = m.group(1), m.group(2), m.group(3)
+                            else:
+                                s_name, unit, app = (new_val or "").strip(), "", ""
 
                         ss_payload["Address_Street"] = s_name
-                        ss_payload["Address_Unit"] = unit
-                        ss_payload["Address_UnitAppendix"] = app
+                        if unit:
+                            ss_payload["Address_Unit"] = unit
+                        if app:
+                            ss_payload["Address_UnitAppendix"] = app
 
                         silvasoft_client.update_company(str(entity_id), ss_payload)
 
