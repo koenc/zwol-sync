@@ -28,29 +28,7 @@ class QueueService:
         now_str = now.strftime("%Y-%m-%d %H:%M:%S")
         payload_str = json.dumps(payload or {})
 
-        # Silvasoft taken krijgen een cooldown
         with get_db() as db:
-            last_ss = db.fetchone(
-                f"SELECT MAX(scheduled_at) as max_sched FROM {prefix}queue WHERE target = 'SILVASOFT' AND status = 'PENDING'"
-            )
-            max_sched = last_ss.get("max_sched") if last_ss else None
-
-            if target == "SILVASOFT":
-                if max_sched and isinstance(max_sched, str):
-                    try:
-                        max_dt = datetime.datetime.strptime(max_sched, "%Y-%m-%d %H:%M:%S")
-                    except ValueError:
-                        max_dt = now
-                elif max_sched and isinstance(max_sched, datetime.datetime):
-                    max_dt = max_sched
-                else:
-                    max_dt = now
-
-                next_sched = max(now, max_dt + datetime.timedelta(seconds=Config.SILVASOFT_QUEUE_INTERVAL_SECONDS))
-                sched_str = next_sched.strftime("%Y-%m-%d %H:%M:%S")
-            else:
-                sched_str = now_str
-
             cur = db.execute(f"""
                 INSERT INTO {prefix}queue (
                     target, action, entity_id, field_name, old_value, new_value,
@@ -58,7 +36,7 @@ class QueueService:
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'PENDING', 0, NULL, %s, %s)
             """, (
                 target, action, entity_id, field_name, old_val, new_val,
-                payload_str, now_str, sched_str
+                payload_str, now_str, now_str
             ))
             task_id = cur.lastrowid
 
@@ -481,31 +459,78 @@ class QueueService:
             logger.info(f"✅ Queue taak #{task_id} ({target} {action}) succesvol verwerkt.")
 
         except Exception as e:
+            fail_now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             logger.error(f"❌ Fout bij verwerken queue taak #{task_id}: {e}")
             with get_db() as db:
                 db.execute(f"""
                     UPDATE {prefix}queue
-                    SET status = 'FAILED', attempts = attempts + 1, error_message = %s
+                    SET status = 'FAILED', attempts = attempts + 1, processed_at = %s, error_message = %s
                     WHERE id = %s
-                """, (str(e), task_id))
+                """, (fail_now_str, str(e), task_id))
             raise
 
     @staticmethod
     def get_queue_summary() -> Dict[str, Any]:
         prefix = Config.DB_TABLE_PREFIX
+        now = datetime.datetime.now()
+        cooldown_sec = getattr(Config, "SILVASOFT_QUEUE_INTERVAL_SECONDS", 600)
+
         with get_db() as db:
             pending = db.fetchall(f"""
                 SELECT * FROM {prefix}queue
                 WHERE status IN ('PENDING', 'PROCESSING')
-                ORDER BY scheduled_at ASC
+                ORDER BY CASE WHEN target = 'HUBSPOT' THEN 0 ELSE 1 END, id ASC
             """)
             recent_done = db.fetchall(f"""
                 SELECT * FROM {prefix}queue
                 WHERE status IN ('SUCCESS', 'FAILED')
                 ORDER BY COALESCE(processed_at, created_at) DESC, id DESC LIMIT 25
             """)
-            ss_count = sum(1 for p in pending if p.get("target") == "SILVASOFT")
-            hs_count = sum(1 for p in pending if p.get("target") == "HUBSPOT")
+            last_ss = db.fetchone(f"""
+                SELECT processed_at FROM {prefix}queue
+                WHERE target = 'SILVASOFT' AND status IN ('SUCCESS', 'FAILED') AND processed_at IS NOT NULL
+                ORDER BY processed_at DESC LIMIT 1
+            """)
+
+        ss_count = sum(1 for p in pending if p.get("target") == "SILVASOFT")
+        hs_count = sum(1 for p in pending if p.get("target") == "HUBSPOT")
+
+        # Dynamische ETA berekening voor pending Silvasoft taken
+        base_ss_time = now
+        if last_ss and last_ss.get("processed_at"):
+            last_p = last_ss["processed_at"]
+            if isinstance(last_p, str):
+                try:
+                    last_dt = datetime.datetime.strptime(last_p, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    last_dt = now
+            elif isinstance(last_p, datetime.datetime):
+                last_dt = last_p
+            else:
+                last_dt = now
+
+            earliest_next = last_dt + datetime.timedelta(seconds=cooldown_sec)
+            if earliest_next > now:
+                base_ss_time = earliest_next
+
+        ss_idx = 0
+        for task in pending:
+            if task.get("target") == "HUBSPOT":
+                task["estimated_str"] = "Z.s.m."
+                task["scheduled_at_formatted"] = "z.s.m."
+            else:
+                if task.get("status") == "PROCESSING":
+                    task["estimated_str"] = "Nu bezig..."
+                    task["scheduled_at_formatted"] = "nu"
+                else:
+                    eta = base_ss_time + datetime.timedelta(seconds=ss_idx * cooldown_sec)
+                    if eta.date() == now.date():
+                        task["estimated_str"] = eta.strftime("%H:%M")
+                        task["scheduled_at_formatted"] = eta.strftime("%H:%M")
+                    else:
+                        task["estimated_str"] = eta.strftime("%d-%m %H:%M")
+                        task["scheduled_at_formatted"] = eta.strftime("%d-%m %H:%M")
+                    ss_idx += 1
 
         return {
             "pending_count": len(pending),
@@ -521,23 +546,78 @@ def _background_queue_worker():
     logger.info("🕒 Achtergrond queue worker gestart.")
     prefix = Config.DB_TABLE_PREFIX
 
+    # Herstart-herstel: zet taken die tijdens crash/reboot in PROCESSING stonden terug op PENDING
+    try:
+        with get_db() as db:
+            cur = db.execute(f"""
+                UPDATE {prefix}queue
+                SET status = 'PENDING'
+                WHERE status = 'PROCESSING'
+            """)
+            if cur and cur.rowcount > 0:
+                logger.info(f"🔄 {cur.rowcount} vastgelopen taken hersteld naar PENDING.")
+    except Exception as e:
+        logger.warning(f"Fout bij herstellen van PROCESSING taken bij startup: {e}")
+
+    cooldown_seconds = getattr(Config, "SILVASOFT_QUEUE_INTERVAL_SECONDS", 600)
+
     while not _STOP_EVENT.is_set():
         try:
             now = datetime.datetime.now()
-            now_str = now.strftime("%Y-%m-%d %H:%M:%S")
 
+            # 1. HubSpot taken hebben prioriteit en kunnen direct lopen
+            next_hs = None
             with get_db() as db:
-                # Zoek oudste PENDING taak die klaar staat om te draaien
-                next_task = db.fetchone(f"""
+                next_hs = db.fetchone(f"""
                     SELECT id FROM {prefix}queue
-                    WHERE status = 'PENDING' AND scheduled_at <= %s
-                    ORDER BY scheduled_at ASC LIMIT 1
-                """, (now_str,))
+                    WHERE target = 'HUBSPOT' AND status = 'PENDING'
+                    ORDER BY id ASC LIMIT 1
+                """)
 
-            if next_task:
-                task_id = next_task["id"]
-                logger.info(f"Worker pakt taak #{task_id} op...")
+            if next_hs:
+                task_id = next_hs["id"]
+                logger.info(f"Worker pakt direct HubSpot taak #{task_id} op...")
                 QueueService.process_task(task_id)
+                continue
+
+            # 2. Silvasoft taken (strikt 1 per cooldown_seconds, standaard 600s / 10 min)
+            with get_db() as db:
+                last_ss = db.fetchone(f"""
+                    SELECT processed_at FROM {prefix}queue
+                    WHERE target = 'SILVASOFT' AND status IN ('SUCCESS', 'FAILED') AND processed_at IS NOT NULL
+                    ORDER BY processed_at DESC LIMIT 1
+                """)
+
+            eligible = True
+            if last_ss and last_ss.get("processed_at"):
+                last_p = last_ss["processed_at"]
+                if isinstance(last_p, str):
+                    try:
+                        last_dt = datetime.datetime.strptime(last_p, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        last_dt = now
+                elif isinstance(last_p, datetime.datetime):
+                    last_dt = last_p
+                else:
+                    last_dt = now
+
+                elapsed = (now - last_dt).total_seconds()
+                if elapsed < cooldown_seconds:
+                    eligible = False
+
+            if eligible:
+                next_ss = None
+                with get_db() as db:
+                    next_ss = db.fetchone(f"""
+                        SELECT id FROM {prefix}queue
+                        WHERE target = 'SILVASOFT' AND status = 'PENDING'
+                        ORDER BY id ASC LIMIT 1
+                    """)
+
+                if next_ss:
+                    task_id = next_ss["id"]
+                    logger.info(f"Worker pakt Silvasoft taak #{task_id} op (cooldown verstreken)...")
+                    QueueService.process_task(task_id)
 
         except Exception as e:
             logger.warning(f"Queue worker loop fout: {e}")

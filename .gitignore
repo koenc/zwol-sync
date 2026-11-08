@@ -30,4 +30,5 @@ Thumbs.db
 logs/*.log
 !logs/.gitkeep
 scratch/
+*.csv
 

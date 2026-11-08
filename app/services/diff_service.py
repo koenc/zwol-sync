@@ -102,7 +102,44 @@ class DiffService:
                 SELECT id, target, action, entity_id, field_name, new_value, scheduled_at, payload_json
                 FROM {prefix}queue
                 WHERE status = 'PENDING'
+                ORDER BY id ASC
             """)
+            last_ss = db.fetchone(f"""
+                SELECT processed_at FROM {prefix}queue
+                WHERE target = 'SILVASOFT' AND status IN ('SUCCESS', 'FAILED') AND processed_at IS NOT NULL
+                ORDER BY processed_at DESC LIMIT 1
+            """)
+
+        now = datetime.datetime.now()
+        cooldown_sec = getattr(Config, "SILVASOFT_QUEUE_INTERVAL_SECONDS", 600)
+        base_ss_time = now
+        if last_ss and last_ss.get("processed_at"):
+            last_p = last_ss["processed_at"]
+            if isinstance(last_p, str):
+                try:
+                    last_dt = datetime.datetime.strptime(last_p, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    last_dt = now
+            elif isinstance(last_p, datetime.datetime):
+                last_dt = last_p
+            else:
+                last_dt = now
+
+            earliest_next = last_dt + datetime.timedelta(seconds=cooldown_sec)
+            if earliest_next > now:
+                base_ss_time = earliest_next
+
+        ss_idx = 0
+        for pr in pending_rows:
+            if pr.get("target") == "HUBSPOT":
+                pr["eta_formatted"] = "z.s.m."
+            else:
+                eta = base_ss_time + datetime.timedelta(seconds=ss_idx * cooldown_sec)
+                if eta.date() == now.date():
+                    pr["eta_formatted"] = eta.strftime("%H:%M")
+                else:
+                    pr["eta_formatted"] = eta.strftime("%d-%m %H:%M")
+                ss_idx += 1
 
         ignored_set = {(str(r["customer_number"]), str(r["contact_id"])) for r in ignored_rows}
         ignored_comp_set = {str(r["customer_number"]) for r in ignored_comp_rows}
@@ -197,8 +234,7 @@ class DiffService:
                 if not is_equal:
                     p_task = pending_company_tasks.get((cust_no, field_name)) or pending_company_tasks.get((hs_id, field_name))
                     if p_task:
-                        sched_dt = p_task.get("scheduled_at")
-                        sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                        sched_str = p_task.get("eta_formatted") or "In wachtrij"
                         pending_fields.append({
                             "field": field_name,
                             "label": field_label,
@@ -399,8 +435,7 @@ class DiffService:
                         pending_by_entity_field.get((str(match_hc.get("id")), "UPDATE_CONTACT_NAME"))
                     )
                     if p_task:
-                        sched_dt = p_task.get("scheduled_at")
-                        sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                        sched_str = p_task.get("eta_formatted") or "In wachtrij"
                         pending_contacts.append({
                             "type": "PENDING_CONTACT_FIELD",
                             "label": f"👤 Naam: {c_name}",
@@ -439,8 +474,7 @@ class DiffService:
                         pending_by_entity_field.get((str(match_hc.get("id")), "UPDATE_CONTACT_EMAIL"))
                     )
                     if p_task:
-                        sched_dt = p_task.get("scheduled_at")
-                        sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                        sched_str = p_task.get("eta_formatted") or "In wachtrij"
                         pending_contacts.append({
                             "type": "PENDING_CONTACT_FIELD",
                             "label": f"👤 E-mail: {c_name}",
@@ -474,8 +508,7 @@ class DiffService:
                         pending_by_entity_field.get((str(match_hc.get("id")), "UPDATE_CONTACT_PHONE"))
                     )
                     if p_task:
-                        sched_dt = p_task.get("scheduled_at")
-                        sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                        sched_str = p_task.get("eta_formatted") or "In wachtrij"
                         pending_contacts.append({
                             "label": f"👤 Tel: {c_name}",
                             "contact_name": c_name,
@@ -507,8 +540,7 @@ class DiffService:
                 # Check of er een pending ADD_CONTACT taak naar HubSpot is
                 p_task = pending_by_entity_field.get((hs_id, "ADD_CONTACT"))
                 if p_task:
-                    sched_dt = p_task.get("scheduled_at")
-                    sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                    sched_str = p_task.get("eta_formatted") or "In wachtrij"
                     pending_contacts.append({
                         "label": f"👤 Contact (naar HS): {sc.get('name')}",
                         "contact_name": sc.get("name"),
@@ -548,8 +580,7 @@ class DiffService:
                     # Check of er een pending ADD_CONTACT taak naar Silvasoft is
                     p_task = pending_by_entity_field.get((cust_no, "ADD_CONTACT"))
                     if p_task:
-                        sched_dt = p_task.get("scheduled_at")
-                        sched_str = sched_dt.strftime("%H:%M") if isinstance(sched_dt, datetime.datetime) else (str(sched_dt)[11:16] if sched_dt else "binnenkort")
+                        sched_str = p_task.get("eta_formatted") or "In wachtrij"
                         pending_contacts.append({
                             "label": f"👤 Contact (naar SS): {hc.get('name')}",
                             "contact_name": hc.get("name"),

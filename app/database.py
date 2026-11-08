@@ -1,22 +1,17 @@
 import logging
 import sqlite3
 import datetime
+import time
 from pathlib import Path
 from contextlib import contextmanager
 from app.config import Config
 
 logger = logging.getLogger("zwol_sync")
 
-_USE_SQLITE = False
-
 
 def check_mariadb_connection():
-    """Controleert of MariaDB bereikbaar is, anders schakelen we over op SQLite."""
-    global _USE_SQLITE
-    if _USE_SQLITE:
-        return False
+    """Controleert of MariaDB bereikbaar is."""
     if not Config.DB_HOST:
-        _USE_SQLITE = True
         return False
 
     try:
@@ -31,12 +26,10 @@ def check_mariadb_connection():
             cursorclass=pymysql.cursors.DictCursor
         )
         conn.close()
-        _USE_SQLITE = False
         logger.info(f"✅ Succesvol verbonden met MariaDB database '{Config.DB_NAME}' op {Config.DB_HOST}:{Config.DB_PORT}")
         return True
     except Exception as e:
-        logger.warning(f"⚠️ Kon geen verbinding maken met MariaDB ({e}). Overschakelen op lokale SQLite fallback.")
-        _USE_SQLITE = True
+        logger.warning(f"⚠️ Kon geen verbinding maken met MariaDB ({e}).")
         return False
 
 
@@ -97,29 +90,32 @@ class DatabaseConnection:
 @contextmanager
 def get_db():
     """Context manager voor veilige database interactie."""
-    global _USE_SQLITE
-
-    if not _USE_SQLITE and Config.DB_HOST:
+    if Config.DB_HOST:
         conn = None
-        try:
-            import pymysql
-            conn = pymysql.connect(
-                host=Config.DB_HOST,
-                port=Config.DB_PORT,
-                user=Config.DB_USER,
-                password=Config.DB_PASSWORD,
-                database=Config.DB_NAME,
-                connect_timeout=5,
-                charset="utf8mb4",
-                cursorclass=pymysql.cursors.DictCursor,
-                autocommit=False
-            )
-            db = DatabaseConnection(conn, is_sqlite=False)
-        except Exception as e:
-            logger.warning(f"MariaDB connectiefout: {e}. Fallback naar SQLite.")
-            _USE_SQLITE = True
+        max_retries = 3
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                import pymysql
+                conn = pymysql.connect(
+                    host=Config.DB_HOST,
+                    port=Config.DB_PORT,
+                    user=Config.DB_USER,
+                    password=Config.DB_PASSWORD,
+                    database=Config.DB_NAME,
+                    connect_timeout=5,
+                    charset="utf8mb4",
+                    cursorclass=pymysql.cursors.DictCursor,
+                    autocommit=False
+                )
+                break
+            except Exception as e:
+                last_err = e
+                if attempt < max_retries - 1:
+                    time.sleep(1)
 
         if conn is not None:
+            db = DatabaseConnection(conn, is_sqlite=False)
             try:
                 yield db
                 db.commit()
@@ -129,8 +125,11 @@ def get_db():
             finally:
                 db.close()
             return
+        else:
+            logger.error(f"❌ MariaDB verbinding mislukt na {max_retries} pogingen: {last_err}")
+            raise last_err
 
-    # SQLite fallback
+    # SQLite fallback (alleen als Config.DB_HOST leeg/niet ingesteld is)
     Config.SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(Config.SQLITE_PATH), timeout=10)
     conn.row_factory = sqlite3.Row

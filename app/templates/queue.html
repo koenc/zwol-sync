@@ -40,7 +40,7 @@
           <th>Klant / Bedrijf</th>
           <th>Veld</th>
           <th>Nieuwe Waarde</th>
-          <th>Gepland voor</th>
+          <th>Verwachte uitvoering</th>
           <th>Status</th>
         </tr>
       </thead>
@@ -53,7 +53,7 @@
             <td>#{{ t.entity_id }}</td>
             <td><code>{{ t.field_name or '-' }}</code></td>
             <td>{{ t.new_value or '-' }}</td>
-            <td>{{ t.scheduled_at }}</td>
+            <td><strong>{{ t.estimated_str or t.scheduled_at }}</strong></td>
             <td><span class="badge badge-secondary">{{ t.status }}</span></td>
           </tr>
         {% endfor %}
