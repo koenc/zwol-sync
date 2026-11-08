@@ -220,6 +220,18 @@ class QueueService:
                             else:
                                 s_name, unit, app = (new_val or "").strip(), "", ""
 
+                        # Voorkom dat Address_Unit al de toevoeging bevat als er een Address_UnitAppendix is
+                        # Silvasoft voegt Address_UnitAppendix namelijk samen met Address_Unit
+                        if unit and app:
+                            unit_clean = re.sub(r'[\s\-]*' + re.escape(app) + r'\b', '', unit, flags=re.IGNORECASE).strip()
+                            if unit_clean:
+                                unit = unit_clean
+                        elif unit and not app:
+                            m_split = re.match(r'^(\d+)\s*([a-zA-Z0-9]+)$', unit)
+                            if m_split:
+                                unit = m_split.group(1)
+                                app = m_split.group(2)
+
                         ss_payload["Address_Street"] = s_name
                         if unit:
                             ss_payload["Address_Unit"] = unit

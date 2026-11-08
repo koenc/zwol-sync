@@ -54,7 +54,12 @@ def format_silvasoft_address(street: Optional[str], unit: Optional[str], unit_ap
     app = (unit_appendix or "").strip()
 
     if u:
-        # Silvasoft API fragmenteert samengestelde toevoegingen met spaties, bijv. '36 B b' -> '36 Bb'
+        # Ontdubbel identieke herhaalde toevoegingen (bijv. '10 b b' of '10 bb' -> '10 b')
+        u = re.sub(r'(\d+)\s+([A-Za-z])\s+\2\b', r'\1 \2', u, flags=re.IGNORECASE)
+        u = re.sub(r'(\d+)\s*([A-Za-z])\2\b', r'\1 \2', u, flags=re.IGNORECASE)
+        # Samengestelde toevoegingen met spaties (bijv. '3 B 9' -> '3 B9')
+        u = re.sub(r'(\d+)\s+([A-Za-z])\s+([0-9]+)\b', r'\1 \2\3', u)
+        # Algemene fragmentatie uit Silvasoft API, bijv. '36 B b' -> '36 Bb'
         u = re.sub(r'(\d+)\s+([A-Za-z])\s+([A-Za-z0-9]+)\b', r'\1 \2\3', u)
 
     if u and app:
