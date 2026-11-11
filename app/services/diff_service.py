@@ -88,6 +88,92 @@ def normalize_address(val: Any) -> str:
     return s.strip()
 
 
+DUTCH_PREPOSITIONS = [
+    # Samengestelde tussenvoegsels (langste eerst)
+    "van der", "van den", "van de", "van het", "van 't", "van t",
+    "in der", "in den", "in de", "in het", "in 't", "in t",
+    "op der", "op den", "op de", "op het", "op 't", "op t",
+    "aan der", "aan den", "aan de", "aan het", "aan 't", "aan t",
+    "bij de", "bij 't", "bij t",
+    "onder de", "onder 't", "onder t",
+    "over de", "over 't", "over t",
+    "v.d.", "v/d", "vd",
+    # Enkelvoudige tussenvoegsels
+    "van", "de", "der", "den", "ter", "te", "ten", "het", "'t", "in", "op", "aan", "bij", "onder", "over", "d'", "d."
+]
+
+
+def split_dutch_name(full_name: str) -> tuple[str, str, str]:
+    """
+    Splitst een volledige Nederlandse naam in (first_name, preposition, last_name).
+    Voorbeelden:
+      'Jesse van der Windt' -> ('Jesse', 'van der', 'Windt')
+      'Karin de Kok'        -> ('Karin', 'de', 'Kok')
+      'Gustaaf van Gaalen'  -> ('Gustaaf', 'van', 'Gaalen')
+      'Brenda Tholens'      -> ('Brenda', '', 'Tholens')
+      'Jan Willem van der Wal' -> ('Jan Willem', 'van der', 'Wal')
+      'Jan Jansen'          -> ('Jan', '', 'Jansen')
+    """
+    if not full_name:
+        return "", "", ""
+
+    parts = full_name.strip().split()
+    if not parts:
+        return "", "", ""
+    if len(parts) == 1:
+        return parts[0], "", ""
+    if len(parts) == 2:
+        return parts[0], "", parts[1]
+
+    # Vanaf 3 woorden: zoek naar tussenvoegsel
+    for i in range(1, len(parts) - 1):
+        if i + 2 < len(parts):
+            two_words = f"{parts[i]} {parts[i+1]}".lower()
+            if two_words in DUTCH_PREPOSITIONS:
+                first = " ".join(parts[:i])
+                prep = f"{parts[i]} {parts[i+1]}"
+                last = " ".join(parts[i+2:])
+                return first, prep, last
+
+        one_word = parts[i].lower()
+        if one_word in DUTCH_PREPOSITIONS:
+            first = " ".join(parts[:i])
+            prep = parts[i]
+            last = " ".join(parts[i+1:])
+            return first, prep, last
+
+    return parts[0], "", " ".join(parts[1:])
+
+
+def format_silvasoft_contact_full_name(c_first: str, c_prep: str, c_last: str) -> str:
+    """
+    Stelt de volledige naam van een Silvasoft contactpersoon samen en voorkomt dubbele tussenvoegsels
+    (bijv. prep='de' met last='de Kok' -> 'Karin de Kok', niet 'Karin de de Kok',
+     en prep='v.d.' met last='van der Windt' -> 'Jesse van der Windt', niet 'Jesse v.d. van der Windt').
+    """
+    first = (c_first or "").strip()
+    prep = (c_prep or "").strip()
+    last = (c_last or "").strip()
+
+    if not prep:
+        return f"{first} {last}".strip()
+
+    last_lower = last.lower()
+    prep_lower = prep.lower()
+
+    # 1. Exact hetzelfde tussenvoegsel aan het begin van achternaam (bijv. 'de' en 'de Kok', of 'van' en 'van Gaalen')
+    if last_lower == prep_lower or last_lower.startswith(prep_lower + " "):
+        return f"{first} {last}".strip()
+
+    # 2. Afkorting zoals 'v.d.', 'vd', 'v/d' terwijl achternaam voluit 'van der ...' of 'van de ...' heeft
+    clean_p = prep_lower.replace(".", "").replace("/", "").strip()
+    if clean_p in ("vd", "vden", "vder") and (last_lower.startswith("van der ") or last_lower.startswith("van de ") or last_lower.startswith("van den ")):
+        return f"{first} {last}".strip()
+
+    parts = [first, prep, last]
+    return " ".join([p for p in parts if p]).strip()
+
+
 
 class DiffService:
     def get_comparison_data(self, filter_type: str = "all") -> Dict[str, Any]:

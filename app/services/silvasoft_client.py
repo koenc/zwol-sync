@@ -147,7 +147,8 @@ class SilvasoftClient:
                         c_first = (c.get("FirstName") or "").strip()
                         c_prep = (c.get("Preposition") or c.get("Prefix") or "").strip()
                         c_last = (c.get("LastName") or c.get("FamilyName") or "").strip()
-                        full_name = " ".join([p for p in [c_first, c_prep, c_last] if p])
+                        from app.services.diff_service import format_silvasoft_contact_full_name
+                        full_name = format_silvasoft_contact_full_name(c_first, c_prep, c_last)
                         c_mail = (c.get("Email") or "").strip()
                         c_phone = (c.get("Phone") or c.get("Mobile") or "").strip()
                         is_default = bool(c.get("DefaultContact"))

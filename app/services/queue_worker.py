@@ -346,9 +346,8 @@ class QueueService:
 
                 elif action == "UPDATE_CONTACT_NAME":
                     c_guid = payload.get("contact_guid")
-                    parts = (new_val or "").strip().split(" ", 1)
-                    first_name = parts[0] if parts else ""
-                    last_name = parts[1] if len(parts) > 1 else ""
+                    from app.services.diff_service import split_dutch_name
+                    first_name, preposition, last_name = split_dutch_name(new_val)
 
                     with get_db() as db:
                         ss = db.fetchone(
@@ -370,6 +369,7 @@ class QueueService:
                             {
                                 "ContactGUID": str(c_guid),
                                 "FirstName": first_name,
+                                "Preposition": preposition,
                                 "LastName": last_name
                             }
                         ]
@@ -383,7 +383,7 @@ class QueueService:
                                 if ct.get("guid") == str(c_guid):
                                     ct["name"] = (new_val or "").strip()
                                     ct["first_name"] = first_name
-                                    ct["last_name"] = last_name
+                                    ct["last_name"] = f"{preposition} {last_name}".strip() if preposition else last_name
                             db.execute(
                                 f"UPDATE {prefix}silvasoft_cache SET contacts_json = %s, primary_contact_name = %s WHERE customer_number = %s",
                                 (json.dumps(cts), (new_val or "").strip(), str(entity_id))
@@ -391,9 +391,8 @@ class QueueService:
 
                 elif action == "ADD_CONTACT":
                     c_name = (payload.get("name") or "").strip()
-                    parts = c_name.split(" ")
-                    first_name = parts[0] if parts else ""
-                    last_name = " ".join(parts[1:]) if len(parts) > 1 else first_name
+                    from app.services.diff_service import split_dutch_name
+                    first_name, preposition, last_name = split_dutch_name(c_name)
                     c_mail = payload.get("email") or ""
                     c_phone = payload.get("phone") or ""
 
@@ -419,6 +418,7 @@ class QueueService:
                         "Relation_Contact": [
                             {
                                 "FirstName": first_name,
+                                "Preposition": preposition,
                                 "LastName": last_name,
                                 "Email": c_mail,
                                 "Phone": c_phone,
@@ -436,12 +436,13 @@ class QueueService:
                             c_f = (c.get("FirstName") or "").strip()
                             c_p = (c.get("Preposition") or c.get("Prefix") or "").strip()
                             c_l = (c.get("LastName") or c.get("FamilyName") or "").strip()
-                            fn = " ".join([p for p in [c_f, c_p, c_l] if p])
+                            from app.services.diff_service import format_silvasoft_contact_full_name
+                            fn = format_silvasoft_contact_full_name(c_f, c_p, c_l)
                             clean.append({
                                 "guid": str(c.get("ContactGUID") or ""),
                                 "name": fn,
                                 "first_name": c_f,
-                                "last_name": c_l,
+                                "last_name": fn[len(c_f):].strip() if fn.startswith(c_f) else fn,
                                 "email": (c.get("Email") or "").strip(),
                                 "phone": (c.get("Phone") or c.get("Mobile") or "").strip(),
                                 "is_primary": bool(c.get("DefaultContact"))
